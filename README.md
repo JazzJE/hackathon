@@ -1,6 +1,6 @@
 # ✳ Doodle Do
 
-**Bad art. Real power.** An intentionally impractical Windows and macOS desktop app: draw a command, let vision AI guess the intent, review the plan, and make your computer do it.
+**Bad art. Real power.** An intentionally impractical Windows and macOS desktop app: draw a command, let vision AI guess the intent, and make your computer do it automatically. Rehearsal mode pauses for review.
 
 This version lives on **`improvements`**. The original remains on **`main`**.
 
@@ -30,8 +30,8 @@ Without a key, four labeled preset demos let you try drawing tools, plan preview
 2. A frameless overlay covers the display under your pointer. Its translucent surface shows a **frozen screenshot**, so the scene stays still while you draw.
 3. Draw over the actual targets. Circle files and draw a trashcan with an arrow; draw an X on a tab; or divide the screen into boxes and put app logos inside them.
 4. Click the green **Done** button at the top right, or press **⌘/Ctrl Enter**. **Tab** hides/restores the tools if they cover something you need to mark. **Esc** cancels without sending a request.
-5. Review the interpreted actions and **Review marked desktop**. The preview combines the screenshot, your drawing, and green click targets or window regions.
-6. **Rehearsal mode** is on by default: play through the steps without touching the desktop. Turn it off and run the same reviewed plan for real.
+5. With **Rehearsal mode off** (the default), a clear interpretation runs automatically and Doodle Do stays minimized afterward. No second execution click is needed. This also applies to sketchpad interpretation and retries.
+6. Turn **Rehearsal mode on** before drawing to pause for review, app correction and a manual preview. Unclear interpretations remain paused. Preset demos and custom PowerShell scripts retain manual execution.
 
 Desktop mode sends the screenshot of the selected display, the drawing, installed app names and IDs, and up to 300 non-hidden desktop item names to the selected AI provider **only when you press Done**. It does not stream the screen. Captures stay in session memory and are not added to the sketch gallery or saved to disk. OpenAI requests use `store: false`. Google free-tier submissions may be used to improve Google products; avoid capturing private desktop content when using that tier.
 
@@ -61,7 +61,7 @@ Add an optional hint and click **Read my doodle**. The sketchpad sends the drawi
 
 Doodle Do discovers installed apps at startup instead of using a fixed app whitelist. On macOS it scans `/Applications`, `~/Applications`, `/System/Applications` and system app bundles; on Windows it uses Start-menu app registrations. **Settings → Installed apps** shows the count, **Refresh app list** picks up new installs, and **Add an app…** includes `.app` bundles or Windows executables stored elsewhere. Only an app selected from this local catalog can be launched; the model cannot invent an executable path. App names and catalog IDs are sent to the selected AI provider for matching; local executable paths stay on your computer.
 
-If no installed app fits a recognizable drawing, Doodle Do proposes its official website or a Google search for the related topic. It prefers installed apps, uses search when the exact website is uncertain, and shows the destination or query before execution. Searches and sites open in your default browser. An unclear drawing still asks for a clearer mark. Website fallbacks do not apply drawn window sizes.
+If no installed app fits a recognizable drawing, Doodle Do proposes its official website or a Google search for the related topic. It prefers installed apps, uses search when the exact website is uncertain, and displays the destination or query in the plan. Turn on Rehearsal mode to review it before execution. Searches and sites open in your default browser. An unclear drawing still asks for a clearer mark. Website fallbacks do not apply drawn window sizes.
 
 Built-in actions open catalog apps and HTTP/HTTPS URLs, search Google, send known shortcuts, target a screen location, move named desktop items to Trash, and arrange app windows. macOS layouts identify the target process by its bundle ID, including Messages and third-party apps. Windows launches use exact registered AppIDs; placement requires a matching top-level app window. Some apps do not expose resizable windows or enforce minimum sizes.
 

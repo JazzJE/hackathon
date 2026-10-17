@@ -1,0 +1,8 @@
+(async()=>{
+  const until=async predicate=>{const deadline=Date.now()+7000;while(!predicate()){if(Date.now()>deadline)throw Error('Unclear drawing did not pause');await new Promise(r=>setTimeout(r,25));}};
+  document.getElementById('retryPlan').click();
+  await until(()=>document.getElementById('planBadge').textContent==='NEEDS A CLUE'&&!document.getElementById('retryPlan').disabled);
+  if(!document.getElementById('execute').disabled)throw Error('Unclear drawing must not enable execution');
+  if((await window.doodle.pendingPlan()).confidence!==.4)throw Error('Unclear plan must remain unexecuted');
+  return {lowConfidencePauses:true};
+})()

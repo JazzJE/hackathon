@@ -191,18 +191,19 @@ $('interpret').onclick = () => work(async () => {
   $('interpret').textContent = 'Deciphering…';
   const p = await requestInterpretation({image:snapshot().toDataURL('image/png'),hint:$('hint').value});
   showPlan(p,'ai'); guesses++; $('guessCount').textContent = guesses; remember(p,'ai');
-  status(p.confidence < .65 || !p.actions.length ? 'A little mysterious. Add a detail or a hint, then try again.' : 'That’s my best guess. Inspect the steps, then give it a go.');
+  status(p.confidence < .65 || !p.actions.length ? 'A little mysterious. Add a detail or a hint, then try again.' : 'Interpretation ready. Rehearsal pauses here for review.');
+  await autoExecute();
 },'thinking');
 function updateMode() {
   const rehearsal = $('rehearsal').checked;
   const trashCount = plan?.actions.filter(a => a.type === 'trash_files').reduce((n,a) => n+JSON.parse(a.value).length,0) || 0;
   const liveLabel = trashCount ? `Move ${trashCount} item${trashCount === 1 ? '' : 's'} to Trash` : 'Do the actual thing';
   $('execute').innerHTML = `${rehearsal ? 'Rehearse this plan' : liveLabel} <span>↗</span>`;
-  $('modeHelp').textContent = rehearsal ? 'Preview the plan. Keep your desktop as-is.' : 'Real desktop actions. Your sketch has power.';
+  $('modeHelp').textContent = rehearsal ? 'Preview the plan. Keep your desktop as-is.' : 'Auto-run: Done → interpret → act → minimize.';
   $('planCard').classList.toggle('live-mode',!rehearsal);
 }
 $('rehearsal').onchange = updateMode;
-$('execute').onclick = () => work(async () => {
+async function executePlan() {
   $('planBadge').textContent = $('rehearsal').checked ? 'DRESS REHEARSAL' : 'MAKING IT HAPPEN';
   status($('rehearsal').checked ? 'Playing through the plan. No desktop actions…' : 'The sketchpad will minimize while your plan runs…');
   const reviewedPlan = plan;
@@ -216,7 +217,13 @@ $('execute').onclick = () => work(async () => {
   $('actions').querySelectorAll('li').forEach(row => row.classList.add('done'));
   if (!result.rehearsal) { runs++; $('runCount').textContent = runs; }
   status(result.rehearsal ? 'A flawless rehearsal. Nothing on your desktop changed. Turn rehearsal off to run the reviewed plan for real.' : `You drew. The computer obeyed. ${result.results.join(' ')}`);
-},'running');
+}
+$('execute').onclick = () => work(executePlan,'running');
+async function autoExecute() {
+  if ($('rehearsal').checked || !plan || plan.confidence < .65 || !plan.actions.length || plan.actions.some(action=>action.type==='shell')) return;
+  $('planCard').dataset.state='running';
+  await executePlan();
+}
 $('stop').onclick = async () => { try { await window.doodle.stop(); status('Stop requested. Completed actions stay completed.'); } catch (e) { status(e.message,true); } };
 window.doodle.onProgress(message => {
   $('actions').querySelectorAll('li').forEach((row,i) => { row.classList.toggle('active',i === message.index); row.classList.toggle('done',i < message.index); });
@@ -363,7 +370,8 @@ async function interpretDesktop(args,retry=false){
   const p=await requestInterpretation(retry?{retry:true,overlay:true}:{image:args.image,hint:args.hint,overlay:true});
   showPlan(p,'desktop');guesses++;$('guessCount').textContent=guesses;
   displayDesktop(args);$('backToSketchpad').hidden=false;markTargets(p.actions);$('reviewCapture').hidden=false;
-  status(p.confidence<.65||!p.actions.length?'Add a hint or edit your marks, then try again.':'Check the selected apps and regions. You can correct an app below without another AI request.');
+  status(p.confidence<.65||!p.actions.length?'Add a hint or edit your marks, then try again.':'Interpretation ready. Rehearsal pauses here for review.');
+  await autoExecute();
 }
 window.doodle.onOverlayDrawing(args=>work(()=>interpretDesktop(args),'thinking'));
 $('retryPlan').onclick=()=>{
@@ -371,7 +379,7 @@ $('retryPlan').onclick=()=>{
   const previous={...lastRequest};
   work(async()=>{
     if(previous.overlay)await interpretDesktop(previous,true);
-    else{invalidate(true);$('planBadge').textContent='READING THE ROOM';const p=await requestInterpretation({retry:true});showPlan(p,'ai');guesses++;$('guessCount').textContent=guesses;remember(p,'ai');status('Fresh interpretation ready. Review the actions.');}
+    else{invalidate(true);$('planBadge').textContent='READING THE ROOM';const p=await requestInterpretation({retry:true});showPlan(p,'ai');guesses++;$('guessCount').textContent=guesses;remember(p,'ai');status('Fresh interpretation ready.');await autoExecute();}
   },'thinking');
 };
 $('editPlan').onclick=async()=>{

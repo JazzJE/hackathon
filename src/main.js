@@ -67,8 +67,12 @@ app.whenReady().then(async () => {
         global.fetch=async(...args)=>{if(failOnce){failOnce=false;return {ok:false,status:503};}return successfulFetch(...args);};
         const recovery=await win.webContents.executeJavaScript(require('node:fs').readFileSync(path.join(__dirname,'../test/fixtures/recovery-smoke.txt'),'utf8'));
         console.log('RECOVERY_SMOKE',JSON.stringify(recovery));
-        global.fetch=async()=>{const text=JSON.stringify({title:'A dinosaur on the internet',explanation:'No matching local app; search for the dinosaur drawing.',confidence:.9,actions:[{type:'search_web',value:'dinosaur'}]});return {ok:true,json:async()=>mockProvider==='gemini'?{candidates:[{finishReason:'STOP',content:{parts:[{text}]}}]}:{output:[{content:[{type:'output_text',text}]}]}};};
+        let webConfidence=.9;
+        global.fetch=async()=>{const text=JSON.stringify({title:'A dinosaur on the internet',explanation:'No matching local app; search for the dinosaur drawing.',confidence:webConfidence,actions:[{type:'search_web',value:'dinosaur'}]});return {ok:true,json:async()=>mockProvider==='gemini'?{candidates:[{finishReason:'STOP',content:{parts:[{text}]}}]}:{output:[{content:[{type:'output_text',text}]}]}};};
         console.log('WEB_SMOKE',JSON.stringify(await win.webContents.executeJavaScript(require('node:fs').readFileSync(path.join(__dirname,'../test/fixtures/web-smoke.txt'),'utf8'))));
+        console.log('AUTORUN_SMOKE',JSON.stringify(await win.webContents.executeJavaScript(require('node:fs').readFileSync(path.join(__dirname,'../test/fixtures/autorun-smoke.txt'),'utf8'))));
+        webConfidence=.4;
+        console.log('UNCLEAR_SMOKE',JSON.stringify(await win.webContents.executeJavaScript(require('node:fs').readFileSync(path.join(__dirname,'../test/fixtures/unclear-smoke.txt'),'utf8'))));
       } finally { global.fetch = originalFetch; settings.providers[mockProvider].key = originalProviderKey; settings.provider = originalProvider; }
       await win.webContents.executeJavaScript('document.activeElement.blur(); window.scrollTo(0,0)');
       await pause(100);
@@ -167,7 +171,7 @@ ipcMain.handle('execute', async (_, options = {}) => {
   if (!plan.actions.length || plan.confidence < .65) throw Error('Drawing is unclear. Add a detail and try again.');
   const frame = pendingFrame;
   if (plan.actions.some(a => ['click','trash_files','arrange_app'].includes(a.type)) && !frame) throw Error('This plan needs a fresh desktop capture.');
-  const rehearsal = options.rehearsal !== false;
+  const rehearsal = process.env.DOODLE_SMOKE === '1' || options.rehearsal !== false;
   if (!rehearsal && frame) {
     captureFresh(frame,screen.getAllDisplays());
   }

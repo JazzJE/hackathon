@@ -1,4 +1,7 @@
 (async () => {
+  if(document.getElementById('rehearsal').checked)throw Error('Auto-run should be the startup default');
+  document.getElementById('rehearsal').checked=true;
+  document.getElementById('rehearsal').dispatchEvent(new Event('change'));
   const assert = (condition, message) => { if (!condition) throw Error(message); };
   const wait = async predicate => { const deadline = Date.now()+8000; while (!predicate()) { if (Date.now()>deadline) throw Error('UI wait timed out'); await new Promise(r=>setTimeout(r,30)); } };
   await wait(() => document.getElementById('connection').textContent.includes('ready'));

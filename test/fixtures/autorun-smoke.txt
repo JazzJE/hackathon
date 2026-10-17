@@ -1,0 +1,10 @@
+(async()=>{
+  const until=async predicate=>{const deadline=Date.now()+7000;while(!predicate()){if(Date.now()>deadline)throw Error('Auto-run timed out: '+document.getElementById('status').textContent);await new Promise(r=>setTimeout(r,25));}};
+  document.getElementById('rehearsal').checked=false;
+  document.getElementById('rehearsal').dispatchEvent(new Event('change'));
+  document.getElementById('retryPlan').click();
+  // The main process forces all smoke execution into rehearsal, even with auto-run on.
+  await until(()=>document.getElementById('planBadge').textContent==='REHEARSAL COMPLETE'&&!document.getElementById('retryPlan').disabled);
+  if(document.getElementById('runCount').textContent!=='0')throw Error('Smoke test must not perform desktop actions');
+  return {automaticExecutionWithoutSecondClick:true,desktopMutated:false};
+})()

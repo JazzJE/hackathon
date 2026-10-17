@@ -57,7 +57,7 @@ el('overlayDone').onclick = async () => {
   catch (e) { el('overlayStatus').textContent = e.message; sending = false; render(); }
 };
 window.doodle.overlayInfo().then(frame => {
-  document.querySelector('.overlay-bar').title += ` · Done sends the captured desktop, drawing, desktop item and app names to ${frame.providerName} for review.`;
+  document.querySelector('.overlay-bar').title += ` · Done sends the captured desktop, drawing, desktop item and app names to ${frame.providerName} for interpretation. With Rehearsal off, recognized actions run automatically.`;
   el('desktopImage').src = frame.image;
   pad.width = frame.width; pad.height = frame.height;
   lines=frame.lines || []; el('overlayHint').value=frame.hint || '';
