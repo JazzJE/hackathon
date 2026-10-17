@@ -1,6 +1,20 @@
 const $ = id => document.getElementById(id);
 const canvas=$('canvas'), ctx=canvas.getContext('2d');
 let strokes=[], current=null, erasing=false, busy=false;
+const savedPreferences = (()=>{try{return JSON.parse(localStorage.getItem('doodle-ai') || '{}')}catch{return {}}})();
+$('provider').value=savedPreferences.provider === 'openai' ? 'openai' : 'local';
+$('model').value=savedPreferences.model || ($('provider').value === 'local' ? 'gemma3:4b' : 'gpt-4.1-mini');
+function providerUI(){const local=$('provider').value==='local';$('engineBadge').textContent=local?'Local AI · No API key':'OpenAI · Cloud mode';$('cloudSettings').hidden=local;$('localSettings').hidden=!local;$('privacy').textContent=local?'Your drawings stay on this computer. Ollama runs the vision model locally.':'Drawing recognition uses OpenAI. An API key and separate API billing are required.';}
+providerUI();
+$('provider').onchange=()=>{$('model').value=$('provider').value==='local'?'gemma3:4b':'gpt-4.1-mini';providerUI();if($('provider').value==='local')checkLocal()};
+$('settings').addEventListener('close',()=>{localStorage.setItem('doodle-ai',JSON.stringify({provider:$('provider').value,model:$('model').value.trim()}));if($('provider').value==='local')checkLocal()});
+async function checkLocal(){
+  $('checkLocal').disabled=true;
+  try { const result=await window.doodle.localStatus($('model').value.trim() || 'gemma3:4b');$('localStatus').textContent=result.message;if(!busy && $('provider').value==='local')status(result.message); }
+  catch { $('localStatus').textContent='Could not check local AI. Try again.'; }
+  finally { $('checkLocal').disabled=false; }
+}
+$('checkLocal').onclick=checkLocal;
 function redraw(){ctx.clearRect(0,0,canvas.width,canvas.height);for(const s of strokes){ctx.beginPath();ctx.strokeStyle=s.erase?'#fffefa':'#30382a';ctx.fillStyle=ctx.strokeStyle;ctx.lineWidth=s.size;ctx.lineCap='round';ctx.lineJoin='round';s.points.forEach((p,i)=>i?ctx.lineTo(...p):ctx.moveTo(...p));if(s.points.length===1){ctx.arc(...s.points[0],s.size/2,0,Math.PI*2);ctx.fill()}else ctx.stroke()}$('placeholder').hidden=strokes.length>0;$('strokeLabel').textContent=`${strokes.length} strokes of genius`;}
 function point(e){const r=canvas.getBoundingClientRect();return[(e.clientX-r.left)*canvas.width/r.width,(e.clientY-r.top)*canvas.height/r.height]}
 canvas.onpointerdown=e=>{if(busy)return;canvas.setPointerCapture(e.pointerId);current={erase:erasing,size:Number($('size').value)*2,points:[point(e)]};strokes.push(current);redraw()};
@@ -13,8 +27,9 @@ $('settingsButton').onclick=()=>$('settings').showModal();
 function showPlan(p){$('planTitle').textContent=p.title;$('explanation').textContent=p.explanation;$('actions').textContent=p.actions.map((a,i)=>`${i+1}. ${a.type} → ${a.value}`).join('\n\n');$('confidence').textContent=`${Math.round(p.confidence*100)}% confident · ${p.actions.length} action${p.actions.length===1?'':'s'}`;$('execute').disabled=p.confidence<.65||!p.actions.length}
 function status(t){$('status').textContent=t}
 async function work(fn){busy=true;$('interpret').disabled=true;$('execute').disabled=true;document.querySelectorAll('[data-demo]').forEach(b=>b.disabled=true);try{await fn()}catch(e){status(e.message.replace(/^Error invoking remote method '[^']+': Error: /,''))}finally{busy=false;$('interpret').disabled=false;document.querySelectorAll('[data-demo]').forEach(b=>b.disabled=false)}}
-$('interpret').onclick=()=>work(async()=>{if(!strokes.length)throw Error('Give me a doodle first.');status('Decoding your artistic genius…');const image=document.createElement('canvas');image.width=canvas.width;image.height=canvas.height;const c=image.getContext('2d');c.fillStyle='#fffefa';c.fillRect(0,0,image.width,image.height);c.drawImage(canvas,0,0);showPlan(await window.doodle.interpret({image:image.toDataURL('image/png'),hint:$('hint').value,key:$('key').value,model:$('model').value.trim()}));status('Plan ready. Take a look, then run it.');});
+$('interpret').onclick=()=>work(async()=>{if(!strokes.length)throw Error('Give me a doodle first.');status($('provider').value==='local'?'Local AI is reading your drawing… The first drawing can take longer while the model loads.':'Decoding your artistic genius…');const image=document.createElement('canvas');image.width=768;image.height=Math.round(768*canvas.height/canvas.width);const c=image.getContext('2d');c.fillStyle='#fffefa';c.fillRect(0,0,image.width,image.height);c.drawImage(canvas,0,0,image.width,image.height);showPlan(await window.doodle.interpret({image:image.toDataURL('image/png'),hint:$('hint').value,key:$('key').value,model:$('model').value.trim(),provider:$('provider').value}));status('Plan ready. Take a look, then run it.');});
 $('execute').onclick=()=>work(async()=>{status('Doing the thing… The sketchpad will minimize.');const result=await window.doodle.execute({shell:$('shell').checked,install:$('install').checked});status(result.join('\n'));});
 $('stop').onclick=()=>{window.doodle.stop();status('Stop requested. Completed actions stay completed.')};window.doodle.onProgress(status);
 document.querySelectorAll('[data-demo]').forEach(b=>b.onclick=()=>work(async()=>{const name=b.dataset.demo;strokes=[];const add=points=>strokes.push({points,size:7,erase:false});if(name==='tab'){add([[400,500],[400,230],[1000,230],[1000,500],[400,500]]);add([[400,300],[1000,300]]);add([[900,250],[940,285]]);add([[940,250],[900,285]])}else if(name==='music'){add(Array.from({length:65},(_,i)=>[700+160*Math.cos(i*Math.PI/32),390+160*Math.sin(i*Math.PI/32)]));for(let j=0;j<3;j++)add(Array.from({length:25},(_,i)=>[590+i*9,345+j*55-25*Math.sin(i*Math.PI/24)]))}else{add([[540,200],[860,200],[860,580],[540,580],[540,200]]);for(let j=0;j<4;j++)add([[590,280+j*65],[810,280+j*65]])}redraw();showPlan(await window.doodle.demo(name));status('Demo plan loaded (no AI request). Run it to try a real action.')}));
 redraw();
+if($('provider').value==='local')checkLocal();

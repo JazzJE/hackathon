@@ -16,13 +16,42 @@ test('installation only generated when enabled, using exact package ID',()=>{
 test('URLs are quoted as PowerShell literals',()=>{
   assert.equal(scriptFor({type:'open_url',value:"https://example.com/a'b$(whoami)"}),"Start-Process 'https://example.com/a''b$(whoami)'");
 });
+test('Start-menu app launch uses a single AppsFolder path separator',()=>{
+  const script=scriptFor({type:'open_app',value:'notepad'},false);
+  assert.ok(script.includes('shell:AppsFolder'+'\\'+"'+$entry.AppID"));
+  assert.ok(!script.includes('shell:AppsFolder'+'\\\\'));
+});
 test('vision request sends drawing and extracts structured response',async()=>{
   let request;
-  const result=await interpret({image:'data:image/png;base64,AAAA',key:'test-key'},async(url,options)=>{request={url,...options};return {ok:true,json:async()=>({output:[{content:[{type:'output_text',text:JSON.stringify(plan([{type:'keys',value:'close_tab'}]))}]}]})}});
+  const result=await interpret({provider:'openai',image:'data:image/png;base64,AAAA',key:'test-key'},async(url,options)=>{request={url,...options};return {ok:true,json:async()=>({output:[{content:[{type:'output_text',text:JSON.stringify(plan([{type:'keys',value:'close_tab'}]))}]}]})}});
   assert.equal(result.actions[0].value,'close_tab');
   const body=JSON.parse(request.body);assert.equal(body.input[0].content[1].type,'input_image');assert.equal(body.store,false);
 });
 test('missing key and API failures produce actionable errors',async()=>{
-  await assert.rejects(()=>interpret({}),/API key/);
-  await assert.rejects(()=>interpret({image:'data:image/png;base64,AAAA',key:'test'},async()=>({ok:false,status:401})),/401/);
+  await assert.rejects(()=>interpret({provider:'openai'}),/API key/);
+  await assert.rejects(()=>interpret({provider:'openai',image:'data:image/png;base64,AAAA',key:'test'},async()=>({ok:false,status:401})),/401/);
+});
+test('local AI is default, sends base64 image only to loopback, and needs no key',async()=>{
+  let request;
+  const result=await interpret({image:'data:image/png;base64,AAAA'},async(url,options)=>{
+    request={url,...options};return {ok:true,json:async()=>({done:true,message:{content:JSON.stringify(plan([{type:'open_app',value:'notepad'}]))}})};
+  });
+  assert.equal(result.actions[0].value,'notepad');
+  assert.equal(request.url,'http://127.0.0.1:11434/api/chat');
+  assert.equal(request.headers.Authorization,undefined);
+  const body=JSON.parse(request.body);
+  assert.equal(body.model,'gemma3:4b');assert.equal(body.stream,false);
+  assert.deepEqual(body.messages[1].images,['AAAA']);
+  assert.equal(body.format.type,'object');
+});
+test('local AI reports missing model, offline server, malformed JSON, and truncated output',async()=>{
+  const args={image:'data:image/png;base64,AAAA'};
+  await assert.rejects(()=>interpret(args,async()=>({ok:false,status:404})),/ollama pull gemma3:4b/);
+  await assert.rejects(()=>interpret(args,async()=>{throw Error('ECONNREFUSED')}),/Cannot reach local AI/);
+  await assert.rejects(()=>interpret(args,async()=>({ok:true,json:async()=>({message:{content:'not json'}})})),/unreadable plan/);
+  await assert.rejects(()=>interpret(args,async()=>({ok:true,json:async()=>({done:true,done_reason:'length',message:{content:JSON.stringify(plan([]))}})})),/could not finish/);
+});
+test('local AI cancellation cannot return an executable plan',async()=>{
+  const controller=new AbortController();controller.abort();
+  await assert.rejects(()=>interpret({image:'data:image/png;base64,AAAA',signal:controller.signal},async(_,options)=>{options.signal.throwIfAborted()}),/recognition stopped/);
 });
