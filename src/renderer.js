@@ -37,7 +37,7 @@ function syncControls() {
   $('redo').disabled = busy || !future.length;
   $('clear').disabled = busy || !strokes.length;
   $('stop').disabled = !busy;
-  ['openDesktop','hint','rehearsal','settingsButton','newChallenge','dismissChallenge','pen','eraser','size'].forEach(id => $(id).disabled = busy);
+  ['backToSketchpad','openDesktop','hint','rehearsal','settingsButton','newChallenge','dismissChallenge','pen','eraser','size'].forEach(id => $(id).disabled = busy);
   document.querySelectorAll('[data-demo], [data-color], .gallery-item').forEach(b => b.disabled = busy);
   canvas.setAttribute('aria-disabled', String(busy));
 }
