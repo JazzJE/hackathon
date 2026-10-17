@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'"><title>Doodle Do — Desktop canvas</title><link rel="stylesheet" href="overlay.css"></head>
+<body>
+<img id="desktopImage" alt="Frozen view of the selected display"><div class="tint"></div>
+<canvas id="overlayCanvas" aria-label="Draw over your desktop to mark what should happen"></canvas>
+<div class="overlay-bar"><div class="overlay-brand"><b>✳ doodle do.</b><span>DRAW ON YOUR DESKTOP</span></div><div class="overlay-tools"><button id="overlayPen" class="selected" aria-pressed="true">✎ Pen</button><button id="overlayEraser" aria-pressed="false">▱ Eraser</button><input id="overlaySize" type="range" min="2" max="16" value="5" aria-label="Brush size"><button id="overlayUndo" aria-label="Undo last stroke">↶ Undo</button><button id="overlayClear">Clear</button></div><div class="overlay-actions"><button id="overlayCancel">Cancel <kbd>Esc</kbd></button><button id="overlayDone" class="complete" disabled>✓ Done <span>Read my drawing</span></button></div></div>
+<div class="overlay-help"><span class="help-star">✧</span><div><strong>Circle the thing. Draw what should happen.</strong><p>An X on a tab. A trashcan pointing to files. Boxes with app logos for a split-screen setup.</p><small>Tab hides tools · Ctrl / ⌘ Enter completes · frozen desktop · nothing runs while you draw · Done sends this screenshot, drawing & desktop item names to OpenAI for review.</small></div></div>
+<div class="hidden-hint">Tab: show tools · Ctrl / ⌘ Enter: Done · Esc: Cancel</div><p id="overlayStatus" role="status" aria-live="polite"></p>
+<script src="overlay.js"></script></body></html>

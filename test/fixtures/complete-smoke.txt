@@ -1,0 +1,14 @@
+(async()=>{
+  const until=async predicate=>{let deadline=Date.now()+7000;while(!predicate()){if(Date.now()>deadline)throw Error('Complete flow timed out: '+document.getElementById('status').textContent);await new Promise(r=>setTimeout(r,25));}};
+  const assert=(value,message)=>{if(!value)throw Error(message)};
+  await until(()=>document.getElementById('planTitle').textContent==='Split screen, drawn by hand' && !document.getElementById('execute').disabled);
+  assert(document.getElementById('sourceBadge').textContent==='DESKTOP + AI','Desktop source label missing');
+  assert(document.getElementById('captureTargets').querySelectorAll('rect').length===2,'Both proposed window regions should be visible');
+  document.getElementById('reviewCapture').click();
+  assert(document.getElementById('captureReview').open,'Desktop review should open');
+  document.getElementById('closeCaptureReview').click();
+  document.getElementById('execute').click();
+  await until(()=>document.getElementById('planBadge').textContent==='REHEARSAL COMPLETE' && !document.getElementById('execute').disabled);
+  assert(document.getElementById('runCount').textContent==='0','Rehearsal must not execute real window arrangements');
+  return {doneToInterpretation:true,splitScreenPlan:true,markedReview:true,rehearsal:true,liveApi:false,desktopMutated:false};
+})()

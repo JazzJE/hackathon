@@ -7,8 +7,9 @@
   "scripts": {
     "start": "electron .",
     "test": "node --test",
-    "check": "node --check src/main.js && node --check src/agent.js && node --check src/renderer.js",
-    "dist": "electron-builder --win portable"
+    "check": "node --check src/main.js && node --check src/agent.js && node --check src/desktop.js && node --check src/preload.js && node --check src/renderer.js && node --check src/overlay.js",
+    "dist": "electron-builder --win portable",
+    "smoke": "node scripts/smoke.js"
   },
   "devDependencies": {
     "electron": "^44.8.0",

@@ -1,0 +1,21 @@
+(async()=>{
+  const assert=(value,message)=>{if(!value)throw Error(message)};
+  const until=async predicate=>{let deadline=Date.now()+5000;while(!predicate()){if(Date.now()>deadline)throw Error('Overlay wait timed out');await new Promise(r=>setTimeout(r,25));}};
+  const c=document.getElementById('overlayCanvas');
+  await until(()=>document.getElementById('desktopImage').complete && c.width>300);
+  assert(document.getElementById('overlayDone').disabled,'Empty overlay must not complete');
+  const capture=c.setPointerCapture;c.setPointerCapture=()=>{};
+  const event=(type,x,y)=>new PointerEvent(type,{pointerId:12,pointerType:'pen',clientX:x,clientY:y,bubbles:true});
+  c.dispatchEvent(event('pointerdown',200,180));c.dispatchEvent(event('pointermove',250,220));c.dispatchEvent(event('pointerup',250,220));
+  assert(!document.getElementById('overlayDone').disabled,'Drawing must enable Done');
+  document.getElementById('overlayUndo').click();
+  assert(document.getElementById('overlayDone').disabled,'Undo should remove drawing');
+  document.dispatchEvent(new KeyboardEvent('keydown',{key:'Tab',bubbles:true}));
+  assert(document.body.classList.contains('controls-hidden'),'Tab should hide covering controls');
+  document.dispatchEvent(new KeyboardEvent('keydown',{key:'Tab',bubbles:true}));
+  assert(!document.body.classList.contains('controls-hidden'),'Tab should restore controls');
+  c.dispatchEvent(event('pointerdown',400,300));c.dispatchEvent(event('pointermove',450,260));c.dispatchEvent(event('pointerup',450,260));
+  c.setPointerCapture=capture;
+  // Captures only the app's fixture image, never the user's actual desktop.
+  return {overlay:true,drawing:true,undo:true,hideTools:true,completeButton:true,width:c.width,height:c.height};
+})()

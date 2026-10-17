@@ -26,3 +26,47 @@ test('missing key and API failures produce actionable errors',async()=>{
   await assert.rejects(()=>interpret({}),/API key/);
   await assert.rejects(()=>interpret({image:'data:image/png;base64,AAAA',key:'test'},async()=>({ok:false,status:401})),/401/);
 });
+
+test('validates apps and script permission against the target OS',async()=>{
+  assert.doesNotThrow(()=>validate(plan([{type:'open_app',value:'safari'}]),'darwin'));
+  assert.throws(()=>validate(plan([{type:'open_app',value:'safari'}]),'win32'));
+  assert.throws(()=>validate(plan([{type:'open_app',value:'paint'}]),'darwin'));
+  assert.throws(()=>validate(plan([{type:'shell',value:'echo test'}]),'darwin'));
+  const mock = async()=>({ok:true,json:async()=>({output:[{content:[{type:'output_text',text:JSON.stringify(plan([{type:'shell',value:'echo test'}]))}]}]})});
+  await assert.rejects(()=>interpret({image:'data:image/png;base64,AAAA',key:'test',platform:'win32'},mock),/full computer control/);
+});
+test('rejects malformed and credential-bearing web URLs',()=>{
+  for (const value of ['https://','https://x:password@example.com','javascript:alert(1)','file:///tmp/test']) assert.throws(()=>validate(plan([{type:'open_url',value}])));
+  assert.doesNotThrow(()=>validate(plan([{type:'open_url',value:'https://example.com/search?q=hello'}])));
+});
+test('macOS commands use argument arrays without shell interpolation',()=>{
+  const {commandFor} = require('../src/agent');
+  assert.deepEqual(commandFor({type:'open_app',value:'safari'},{platform:'darwin'}),{file:'/usr/bin/open',args:['-a','Safari']});
+  assert.deepEqual(commandFor({type:'open_app',value:'notepad'},{platform:'darwin'}),{file:'/usr/bin/open',args:['-a','TextEdit']});
+  const url='https://example.com/$(whoami)';
+  assert.deepEqual(commandFor({type:'open_url',value:url},{platform:'darwin'}).args,[url]);
+  assert.match(commandFor({type:'keys',value:'close_tab'},{platform:'darwin'}).args[1],/command down/);
+  assert.throws(()=>commandFor({type:'keys',value:'close_tab'},{platform:'linux'}),/Windows and macOS/);
+});
+test('vision uses structured output and target-specific capabilities',async()=>{
+  let body;
+  await interpret({image:'data:image/png;base64,AAAA',key:'test',platform:'darwin'},async(_,options)=>{
+    body=JSON.parse(options.body);
+    return {ok:true,json:async()=>({output:[{content:[{type:'output_text',text:JSON.stringify(plan([{type:'open_app',value:'safari'}]))}]}]})};
+  });
+  assert.equal(body.text.format.type,'json_schema'); assert.equal(body.text.format.strict,true);
+  assert.match(body.instructions,/macOS/); assert.match(body.instructions,/safari/); assert.match(body.instructions,/Do not return shell/);
+});
+test('refusal, incomplete and malformed model output have useful messages',async()=>{
+  const args={image:'data:image/png;base64,AAAA',key:'test'};
+  for(const [data,message] of [
+    [{output:[{content:[{type:'refusal',refusal:'No'}]}]},/could not interpret/],
+    [{status:'incomplete'},/cut short/],
+    [{output:[{content:[{type:'output_text',text:'not JSON'}]}]},/complete plan/]
+  ]) await assert.rejects(()=>interpret(args,async()=>({ok:true,json:async()=>data})),message);
+});
+test('empty actions and empty or oversized titles are rejected',()=>{
+  assert.throws(()=>validate(plan([{type:'shell',value:''}])));
+  assert.throws(()=>validate({...plan([]),title:''}));
+  assert.throws(()=>validate({...plan([]),title:'x'.repeat(161)}));
+});
