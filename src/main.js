@@ -177,6 +177,7 @@ ipcMain.handle('execute', async (_, options = {}) => {
   if(!rehearsal)lastDrawing=null;
   pending = null; pendingFrame = null; busy = true; stopped = false;
   const results = [];
+  let completed = false;
   try {
     if (!rehearsal) { win.minimize(); await pause(900); }
     for (let i = 0; i < plan.actions.length; i++) {
@@ -202,13 +203,17 @@ ipcMain.handle('execute', async (_, options = {}) => {
     }
     if (stopped) throw Error('Stopped. Completed actions stay completed.');
     if (rehearsal) { pending = plan; pendingFrame = frame; }
+    completed = true;
     return {results,rehearsal};
   } catch (e) {
     if (stopped) throw Error('Stopped. Completed actions stay completed.');
     throw e;
   } finally {
     busy = false; active = null;
-    if (!win.isDestroyed() && !rehearsal) { win.restore(); win.focus(); }
+    if (!win.isDestroyed() && !rehearsal) {
+      if (completed) win.minimize();
+      else { win.restore(); win.focus(); }
+    }
   }
 });
 // One display per capture: coordinates stay tied to its bounds, including negative origins.
