@@ -1,6 +1,6 @@
 # ✳ Doodle Do
 
-**Bad drawings. Worse decisions.** A Windows desktop app that turns sketches into questionable computer actions. Comedy mode is the default: money opens crypto.com/dogecoin, a heart searches for recovery from being left on read, and coffee prescribes a ten-hour nap. Every topic gets a short roast on screen. Turn Comedy mode off in Settings for literal computer control.
+**Bad drawings. Worse decisions.** A Windows desktop app that turns sketches into questionable computer actions. Creative mode lets the AI choose an action directly from each drawing. Money opens crypto.com/dogecoin as explicitly configured. Turn Creative mode off in Settings for literal computer control.
 
 ## Draw over your screen
 
@@ -15,10 +15,10 @@ Only the drawn ink goes to the model, not the desktop beneath it. Other screen d
 - Two-stroke X and recognizable dollar signs use immediate gesture recognition, with no model request. Dollar signs use the instant path in Comedy mode.
 - A recognizable hint such as `money` or `heart` skips the model in Comedy mode.
 - Identical drawings are cached for the session (up to 32); engine, model, hint, and mode are included in the cache key.
-- Comedy mode uses the smaller **Moondream** vision model and generates a short, specific description of the drawing. The jokes are built locally instead of waiting for prose.
+- Creative mode uses **Gemma 3 4B** and returns one compact computer action without generating jokes or explanations.
 - Local models preload in the background and stay warm for an hour. A persistent Windows helper sends shortcuts/clicks without launching PowerShell for every input. Focus delay is reduced to 120 ms.
 
-Measured on the development machine: the overlay target-click test took about 0.48 seconds, a fresh Moondream money interpretation about 9.6 seconds versus 29 seconds with the previous Gemma path, and the exact repeat returned from cache in under 1 ms. These are example measurements, not guarantees; new complex drawings can still take several seconds on CPU.
+Instant X recognition and cached results bypass the model. Gemma 3 4B prioritizes drawing recognition over the smaller model’s latency; cold requests take longer while it loads.
 
 ## Run locally — no API key
 
@@ -34,9 +34,9 @@ npm start
 
 Or launch the portable **Doodle Do.exe** after setup. Local AI is the default. Draw and click **Make it happen**: the app interprets your drawing and immediately runs the resulting plan. No second click, account, API key, or per-request API charges. After the initial downloads, local recognition works without internet; actions that open websites or install apps still require it.
 
-The default comedy model is [Moondream](https://ollama.com/library/moondream) (roughly 1.7 GB to download), served through Ollama on `127.0.0.1:11434`. Allow additional space and memory for the runtime. The first drawing can take longer while the model loads. Drawings and hints stay on this computer in local mode. Speed takes priority over exact recognition.
+The default model is Gemma 3 4B (roughly 3.4 GB), served through Ollama on `127.0.0.1:11434`. It uses a 4096-token context and stays warm for an hour. Drawings and hints stay on this computer in local mode.
 
-The app starts an installed Ollama server if needed. In **Settings → Check local AI**, check whether your selected model is installed. If a download is interrupted, rerun setup or `ollama pull moondream`; Ollama resumes the download. You can choose another installed vision-capable model in Settings. Engine, model, and comedy preferences persist; permission toggles reset per session. Literal mode defaults to Gemma 3 4B: run `ollama pull gemma3:4b` if it is not installed.
+The app starts an installed Ollama server if needed. In **Settings → Check local AI**, check whether your selected model is installed. If a download is interrupted, rerun setup or `ollama pull gemma3:4b`; Ollama resumes the download. You can choose another installed vision-capable model in Settings. Engine, model, and comedy preferences persist; permission toggles reset per session. Both creative and literal modes default to Gemma 3 4B.
 
 ## Optional OpenAI mode
 
@@ -48,9 +48,9 @@ The example cards load **preset demo plans**, not AI recognition. Click **Run th
 
 1. Draw using mouse, pen, or touch. Undo, erase, clear, and adjust brush size.
 2. Optionally add a hint. Click **Make it happen**.
-3. A gesture, hint, cache hit, or AI returns the action. AI generates only the short command/topic, with the displayed explanation built locally. No desktop screenshots or other computer data are sent to the model.
+3. A gesture, hint, cache hit, or AI returns the action. AI generates only the short action, with the displayed explanation built locally. No desktop screenshots or other computer data are sent to the model.
 4. The plan appears and runs automatically, including low-confidence best guesses. If the AI finds no plausible action, it takes a second look. There are no generic grass or cat backups. Each best guess uses the drawing’s own content; a technical failure displays an error. App installation and PowerShell still require their respective Settings toggles to be enabled before you submit the drawing.
-5. The sketchpad minimizes, returning focus to the previous window. Shortcuts affect that window. Comedy actions show a roast and leave the opened website in front. Results and timing remain in the main app.
+5. The sketchpad minimizes, returning focus to the previous window. Shortcuts affect that window. Creative actions leave the opened app or website in front. Results and timing remain in the main app.
 
 ## What it can do
 
@@ -74,7 +74,7 @@ npm run dist -- --config.compression=store
 
 The last command builds a portable Windows executable under `dist/` (unsigned). Electron isolates the renderer with a sandboxed preload and a narrow IPC bridge. The main process validates plans and retains the executable plan rather than accepting scripts from the renderer. Full control and app installation are opt-in per session.
 
-Files: `src/agent.js` (vision and validation), `src/comedy.js` (topic-to-punchline/web action mapping), `src/gestures.js` (instant X and dollar recognition), `src/native-host.*` (persistent Windows input helper), `src/overlay.*` (screen drawing), `src/local-ai.js` (local server and warmup), `src/main.js` (desktop lifecycle and execution), `src/renderer.js` (main canvas and UI). No hosted backend required.
+Files: `src/agent.js` (vision and validation), `src/comedy.js` (explicit money shortcut), `src/gestures.js` (instant X and dollar recognition), `src/native-host.*` (persistent Windows input helper), `src/overlay.*` (screen drawing), `src/local-ai.js` (local server and warmup), `src/main.js` (desktop lifecycle and execution), `src/renderer.js` (main canvas and UI). No hosted backend required.
 
 Integrations follow the [Ollama chat API](https://docs.ollama.com/api/chat) and [OpenAI image-input documentation](https://developers.openai.com/api/docs/guides/images-vision).
 

@@ -5,16 +5,16 @@ const { interpret, validate, resolvePlan, powershell, scriptFor } = require('./a
 const { ensureLocalAI, localStatus, warmLocal } = require('./local-ai');
 const {NativeHost}=require('./native-host');
 const {recognizeX,recognizeMoney}=require('./gestures');
-const {JOKES,comedyPlan,topicFromHint}=require('./comedy');
+const {moneyPlan,isMoneyHint}=require('./comedy');
 const native=new NativeHost(),cache=new Map();
 let win, overlay, overlayBounds, targetWindow=0, pending = null, active = null, stopped = false, busy = false, recognition = null;
-let settings={provider:'local',model:'moondream:latest',key:'',shell:false,install:false,comedy:true};
-const reactions=new Map();
+let settings={provider:'local',model:'gemma3:4b',key:'',shell:false,install:false,comedy:true};
+
 const smokeMode = process.env.DOODLE_SMOKE === '1' || process.env.DOODLE_LOCAL_SMOKE === '1' || process.env.DOODLE_OVERLAY_SMOKE === '1' || process.env.DOODLE_COMEDY_SMOKE === '1';
 if(smokeMode) app.setPath('userData',path.join(app.getPath('temp'),'doodle-do-smoke',String(process.pid)));
 if(process.env.DOODLE_OVERLAY_SMOKE==='1')app.commandLine.appendSwitch('force-renderer-accessibility');
 app.whenReady().then(() => {
-  win = new BrowserWindow({ width: 1320, height: 900, minWidth: 960, minHeight: 720, backgroundColor: '#f5f3ed', webPreferences: { preload: path.join(__dirname,'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true } });
+  win = new BrowserWindow({ show: !smokeMode, width: 1320, height: 900, minWidth: 960, minHeight: 720, backgroundColor: '#f5f3ed', webPreferences: { preload: path.join(__dirname,'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true } });
   win.loadFile(path.join(__dirname,'index.html'));
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   win.webContents.on('will-navigate', e => e.preventDefault());
@@ -36,15 +36,13 @@ app.whenReady().then(() => {
         const result=await win.webContents.executeJavaScript(`(async()=>{
           document.querySelector('[data-demo="money"]').click();while(document.getElementById('interpret').disabled)await new Promise(r=>setTimeout(r,100));
           const out=document.createElement('canvas');out.width=512;out.height=293;const c=out.getContext('2d');c.fillStyle='#fff';c.fillRect(0,0,512,293);c.drawImage(document.getElementById('canvas'),0,0,512,293);
-          const args={image:out.toDataURL('image/png'),provider:'local',model:'moondream:latest',comedy:true};
+          const args={image:out.toDataURL('image/png'),provider:'local',model:'gemma3:4b',comedy:true};
           const first=await window.doodle.interpret(args);showPlan(first);
           const second=await window.doodle.interpret(args);
           return {topic:first.topic,url:first.actions[0]?.value,firstMs:Math.round(first.latencyMs),repeatMs:Math.round(second.latencyMs),repeatSource:second.source};
         })()`);
         if(result.topic!=='money'||result.url!=='https://crypto.com/dogecoin'||result.repeatSource!=='cache')throw Error('Money interpretation failed: '+JSON.stringify(result));
         console.log('COMEDY_SMOKE',JSON.stringify(result));
-        const reaction=showReaction('money');await new Promise(r=>reaction.webContents.once('did-finish-load',r));await new Promise(r=>setTimeout(r,150));
-        if(process.env.DOODLE_SCREENSHOT)require('node:fs').writeFileSync(process.env.DOODLE_SCREENSHOT,(await reaction.webContents.capturePage()).toPNG());
       }
       if(process.env.DOODLE_OVERLAY_SMOKE === '1'){
         const fs=require('node:fs'),{spawn}=require('node:child_process'),{pathToFileURL}=require('node:url');
@@ -103,7 +101,7 @@ ipcMain.handle('overlay-open',()=>showOverlay());
 ipcMain.handle('overlay-cancel',async()=>{overlay.hide();if(targetWindow)await native.call('focus',{handle:targetWindow});});
 ipcMain.handle('settings',(event,args)=>{
   if(event.sender!==win.webContents)throw Error('Settings are owned by the main window.');
-  settings={provider:args.provider==='openai'?'openai':'local',model:String(args.model||'moondream:latest').slice(0,200),key:String(args.key||''),shell:!!args.shell,install:!!args.install,comedy:args.comedy!==false};
+  settings={provider:args.provider==='openai'?'openai':'local',model:String(args.model||'gemma3:4b').slice(0,200),key:String(args.key||''),shell:!!args.shell,install:!!args.install,comedy:args.comedy!==false};
   if(settings.provider==='local'&&!smokeMode)warmLocal(settings.model).catch(()=>{});
 });
 ipcMain.handle('local-status', (_, model) => localStatus(typeof model === 'string' ? model.slice(0,200) : undefined));
@@ -112,9 +110,9 @@ async function processDrawing(args) {
   pending=null; busy=true; recognition=new AbortController();
   try {
     const start=performance.now();
-    const hintedTopic=args.comedy?topicFromHint(args.hint):null;
-    if(hintedTopic){pending={...comedyPlan(hintedTopic),source:'hint',latencyMs:performance.now()-start};return pending;}
-    if(args.comedy&&!args.hint&&recognizeMoney(args.strokes)){pending={...comedyPlan('money'),source:'gesture',latencyMs:performance.now()-start};return pending;}
+    const hintedMoney=args.comedy&&isMoneyHint(args.hint);
+    if(hintedMoney){pending={...moneyPlan(),source:'hint',latencyMs:performance.now()-start};return pending;}
+    if(args.comedy&&!args.hint&&recognizeMoney(args.strokes)){pending={...moneyPlan(),source:'gesture',latencyMs:performance.now()-start};return pending;}
     if(!args.hint && recognizeX(args.strokes)){
       pending={title:'Close tab',explanation:'Instant X gesture. No model needed.',confidence:1,source:'gesture',latencyMs:performance.now()-start,actions:[{type:'keys',value:'close_tab'}]};return pending;
     }
@@ -135,7 +133,7 @@ async function processDrawing(args) {
   } finally { busy=false; recognition=null; }
 }
 ipcMain.handle('interpret', (_,args)=>processDrawing(args));
-ipcMain.handle('demo', (_, name) => { if(busy) throw Error('An action is still running.'); const demos = { money:comedyPlan('money'), tab: {title:'Close the current tab',explanation:'A browser tab with a big X. Goodbye, tab.',confidence:1,actions:[{type:'keys',value:'close_tab'}]}, music: {title:'Open Spotify',explanation:'Three curved lines in a circle. Time for music.',confidence:1,actions:[{type:'open_app',value:'spotify'}]}, note: {title:'Open Notepad',explanation:'A little page for your next big idea.',confidence:1,actions:[{type:'open_app',value:'notepad'}]} }; if(!demos[name]) throw Error('Unknown demo'); pending = validate(demos[name]); return pending; });
+ipcMain.handle('demo', (_, name) => { if(busy) throw Error('An action is still running.'); const demos = { money:moneyPlan(), tab: {title:'Close the current tab',explanation:'A browser tab with a big X. Goodbye, tab.',confidence:1,actions:[{type:'keys',value:'close_tab'}]}, music: {title:'Open Spotify',explanation:'Three curved lines in a circle. Time for music.',confidence:1,actions:[{type:'open_app',value:'spotify'}]}, note: {title:'Open Notepad',explanation:'A little page for your next big idea.',confidence:1,actions:[{type:'open_app',value:'notepad'}]} }; if(!demos[name]) throw Error('Unknown demo'); pending = validate(demos[name]); return pending; });
 async function executePlan(options,fromOverlay=false) {
   if(busy || !pending) throw Error('Interpret a drawing first.');
   const plan = validate(pending); pending = null;
@@ -156,22 +154,9 @@ async function executePlan(options,fromOverlay=false) {
       else if(action.type==='open_url'){await shell.openExternal(action.value);results.push('Done.');}
       else results.push(await powershell(scriptFor(action, options.install), child => { active = child; })); active = null;
     }
-    if(plan.comedy&&plan.topic!=='money')showReaction(plan);
     return results;
   } finally { busy = false; active = null; if(!fromOverlay&&!plan.comedy){win.restore(); win.focus();} }
 }
-function showReaction(plan){
-  const joke=typeof plan==='string'?JOKES[plan]:{emoji:JOKES[plan.topic]?.emoji||'✳',title:plan.title,line:plan.explanation};
-  if(!joke)return;
-  const bounds=screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
-  const reaction=new BrowserWindow({width:610,height:175,x:Math.round(bounds.x+(bounds.width-610)/2),y:bounds.y+30,frame:false,resizable:false,alwaysOnTop:true,skipTaskbar:true,backgroundColor:'#dcf39c',webPreferences:{preload:path.join(__dirname,'preload.js'),contextIsolation:true,nodeIntegration:false,sandbox:true}});
-  reactions.set(reaction.webContents.id,joke);reaction.loadFile(path.join(__dirname,'reaction.html'));
-  reaction.webContents.setWindowOpenHandler(()=>({action:'deny'}));
-  const id=reaction.webContents.id;reaction.on('closed',()=>reactions.delete(id));
-  setTimeout(()=>{if(!reaction.isDestroyed())reaction.close()},5500);
-  return reaction;
-}
-ipcMain.handle('reaction-data',event=>reactions.get(event.sender.id)||{emoji:'✳',title:'Doodle Do',line:'Your drawing. Your questionable decision.'});
 ipcMain.handle('execute',(_,options)=>executePlan(options));
 ipcMain.handle('overlay-submit',async(event,args)=>{
   if(event.sender!==overlay.webContents||!overlay.isVisible()||busy)throw Error('Overlay is not ready.');

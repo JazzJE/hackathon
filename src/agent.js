@@ -1,5 +1,4 @@
 const { spawn } = require('node:child_process');
-const {drawingPlan}=require('./comedy');
 const APPS = {
   chrome: { id: 'Google.Chrome', launch: 'chrome.exe' },
   firefox: { id: 'Mozilla.Firefox', launch: 'firefox.exe' },
@@ -41,20 +40,22 @@ async function interpret({ image, hint = '', key, model, provider = 'local', sig
   const timeout = AbortSignal.timeout(provider === 'local' ? 300000 : 60000);
   const requestSignal = signal ? AbortSignal.any([signal,timeout]) : timeout;
   if(comedy){
-    const format={type:'object',required:['caption'],additionalProperties:false,properties:{caption:{type:'string'}}};
-    const prompt=`What object or action does this drawing look like? Give your best specific guess in a short phrase.${hint ? " Context: "+String(hint).slice(0,300) : ""}`;
-    let response;
-    if(provider==='local'){
-      try{response=await fetcher('http://127.0.0.1:11434/api/generate',{method:'POST',signal:requestSignal,headers:{'Content-Type':'application/json'},body:JSON.stringify({model:model||'moondream:latest',prompt:prompt+' Return JSON with a caption field.',images:[image.slice('data:image/png;base64,'.length)],format,stream:false,keep_alive:'1h',options:{temperature:.2,num_predict:32,num_ctx:2048}})});}
-      catch(e){if(signal?.aborted)throw Error('Drawing recognition stopped.');throw Error('Local comedy AI is unavailable. Check Ollama in Settings.');}
-      if(!response.ok)throw Error(response.status===404?'Download the fast vision model: ollama pull moondream':`Local comedy AI failed (${response.status}).`);
+    const format={type:'object',required:['type','value'],additionalProperties:false,properties:{type:{type:'string',enum:['open_app','open_url','keys']},value:{type:'string'}}};
+    const prompt=`Turn this drawing into ONE specific computer action. Make your best guess, even for messy drawings. Choose a playful, surprising action connected to what is actually drawn. Open a relevant real website, launch an app or use a shortcut. No canned jokes, generic meme searches, motivational searches, grass tutorials or cat-image defaults. No roast text. Money or a dollar sign opens https://crypto.com/dogecoin. Return only {"type":"...","value":"..."}. Types: open_app (${Object.keys(APPS).join(',')}), open_url (a complete https URL), keys (close_tab,new_tab,undo,save,show_desktop,mute). Keep the value short. User hint: ${String(hint).slice(0,300)}`;
+    for(let attempt=0;attempt<2;attempt++){
+      let response;
+      if(provider==='local'){
+        try{response=await fetcher('http://127.0.0.1:11434/api/generate',{method:'POST',signal:requestSignal,headers:{'Content-Type':'application/json'},body:JSON.stringify({model:model||'gemma3:4b',prompt:prompt+(attempt?' Your previous response was incomplete. Finish one short valid JSON object.':''),images:[image.slice('data:image/png;base64,'.length)],format,stream:false,keep_alive:'1h',options:{temperature:0,num_predict:attempt?384:192,num_ctx:4096}})});}
+        catch(e){if(signal?.aborted)throw Error('Drawing recognition stopped.');throw Error('Local AI is unavailable. Check Ollama in Settings.');}
+      }else{
+        response=await fetcher('https://api.openai.com/v1/responses',{method:'POST',signal:requestSignal,headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json'},body:JSON.stringify({model:model||'gpt-4.1-mini',store:false,instructions:prompt,text:{format:{type:'json_schema',name:'drawing_action',strict:true,schema:format}},input:[{role:'user',content:[{type:'input_image',image_url:image}]}]})});
+      }
+      if(!response.ok)throw Error(`Drawing recognition failed (${response.status}). Check your AI settings.`);
       const data=await response.json();
-      return validate(drawingPlan(JSON.parse(data.response).caption));
+      if(signal?.aborted)throw Error('Drawing recognition stopped.');
+      const text=provider==='local'?data.response:(data.output||[]).flatMap(o=>o.content||[]).filter(c=>c.type==='output_text').map(c=>c.text).join('');
+      try{return parseCreativeAction(text);}catch(e){if(attempt)throw e;}
     }
-    response=await fetcher('https://api.openai.com/v1/responses',{method:'POST',signal:requestSignal,headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json'},body:JSON.stringify({model:model||'gpt-4.1-mini',store:false,instructions:prompt,text:{format:{type:'json_schema',name:'drawing_topic',strict:true,schema:format}},input:[{role:'user',content:[{type:'input_image',image_url:image}]}]})});
-    if(!response.ok)throw Error(`OpenAI request failed (${response.status}).`);
-    const data=await response.json(),text=(data.output||[]).flatMap(o=>o.content||[]).filter(c=>c.type==='output_text').map(c=>c.text).join('');
-    return validate(drawingPlan(JSON.parse(text).caption));
   }
   if(provider === 'local') {
     let response;
@@ -86,6 +87,19 @@ async function interpret({ image, hint = '', key, model, provider = 'local', sig
   const data = await response.json();
   const text = (data.output || []).flatMap(o => o.content || []).filter(c => c.type === 'output_text').map(c => c.text).join('');
   return parsePlan(text);
+}
+function parseCreativeAction(text){
+  const source=String(text||'').trim().replace(/^```(?:json)?\s*|\s*```$/g,'');
+  let action;
+  try{action=JSON.parse(source);}catch{
+    // Recover a missing final brace only when both action strings are complete.
+    // Never invent the remainder of a cut-off URL or command.
+    try{action=JSON.parse(source+'}');}catch{throw Error('The model could not finish its action. Please try again.');}
+  }
+  const plan=validate({title:typeof action?.type==='string'?action.type.replace(/_/g,' '):'Action',explanation:typeof action?.value==='string'?action.value:'',confidence:1,comedy:true,quick:true,actions:[action]});
+  if(!['open_app','open_url','keys'].includes(action.type))throw Error('The model returned an unsupported drawing action.');
+  if(action.type==='open_url'&&action.value==='https://crypto.com/dogecoin')plan.topic='money';
+  return plan;
 }
 function parsePlan(text) {
   try {

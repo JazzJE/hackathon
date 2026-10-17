@@ -1,34 +1,31 @@
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
-const {comedyPlan,drawingPlan,topicFromHint,TOPICS}=require('../src/comedy');
-const {validate,interpret}=require('../src/agent');
-test('money opens Crypto.com directly',()=>{
-  const p=comedyPlan('money');assert.equal(p.actions[0].value,'https://crypto.com/dogecoin');
-  assert.equal(p.title,'Open Dogecoin');assert.equal(p.comedy,true);validate(p);
+const {moneyPlan,isMoneyHint}=require('../src/comedy');
+const {interpret}=require('../src/agent');
+const args={image:'data:image/png;base64,AAAA',comedy:true};
+const reply=response=>({ok:true,json:async()=>({response,done:true})});
+test('only an explicit money hint uses the configured shortcut',()=>{
+  assert.equal(moneyPlan().actions[0].value,'https://crypto.com/dogecoin');
+  assert.equal(isMoneyHint('money'),true);
+  for(const hint of ['heart','coffee','a book','music','a cash register on fire'])assert.equal(isMoneyHint(hint),false);
 });
-test('all comedy topics produce valid real-web actions',()=>{
-  for(const topic of TOPICS){const p=validate(comedyPlan(topic));assert.equal(p.actions[0].type,'open_url');assert.match(p.actions[0].value,/^https:\/\//);}
-  assert.equal(comedyPlan('a rocket').topic,'custom');
+test('creative drawings use model-chosen apps and websites',async()=>{
+  for(const action of [{type:'open_app',value:'spotify'},{type:'open_url',value:'https://www.nasa.gov/'}]){
+    const plan=await interpret(args,async(url,options)=>{assert.equal(JSON.parse(options.body).model,'gemma3:4b');return reply(JSON.stringify(action));});
+    assert.deepEqual(plan.actions,[action]);assert.equal(plan.explanation,action.value);
+  }
 });
-test('obvious hints skip the vision model',()=>{
-  assert.equal(topicFromHint('money'),'money');assert.equal(topicFromHint('a heart'),'love');
-  assert.equal(topicFromHint('completely unfamiliar'),null);
+test('a cut-off string retries and runs only the complete action',async()=>{
+  let calls=0;const plan=await interpret(args,async()=>{calls++;return reply(calls===1?'{"type":"open_url","value":"https://www.nasa.gov':'{"type":"open_url","value":"https://www.nasa.gov/"}');});
+  assert.equal(calls,2);assert.equal(plan.actions[0].value,'https://www.nasa.gov/');
 });
-test('fast comedy mode describes the actual drawing instead of choosing a generic category',async()=>{
-  let request;
-  const p=await interpret({image:'data:image/png;base64,AAAA',comedy:true},async(url,options)=>{
-    request={url,body:JSON.parse(options.body)};return {ok:true,json:async()=>({response:JSON.stringify({caption:'a pile of cash'}),done:true})};
-  });
-  assert.equal(request.url,'http://127.0.0.1:11434/api/generate');
-  assert.equal(request.body.model,'moondream:latest');assert.equal(request.body.options.num_predict,32);
-  assert.deepEqual(request.body.format.required,['caption']);
-  assert.equal(p.topic,'money');
+test('missing closing brace is recovered without another model call',async()=>{
+  let calls=0;const plan=await interpret(args,async()=>{calls++;return reply('{"type":"open_app","value":"notepad"');});
+  assert.equal(calls,1);assert.equal(plan.actions[0].value,'notepad');
 });
-test('unfamiliar drawings keep their own content and never become grass or cats',()=>{
-  const rocket=drawingPlan('a rocket launching into space'),duck=drawingPlan('a rubber duck wearing a hat');
-  assert.match(decodeURIComponent(rocket.actions[0].value),/rocket launching into space/);
-  assert.match(decodeURIComponent(duck.actions[0].value),/rubber duck wearing a hat/);
-  assert.notEqual(rocket.actions[0].value,duck.actions[0].value);
-  assert.doesNotMatch(rocket.actions[0].value,/grass|cat%20images/);
-  assert.throws(()=>drawingPlan('unknown'),/No drawing description/);
+test('repeated malformed output gives a readable error without a backup',async()=>{
+  let calls=0;await assert.rejects(()=>interpret(args,async()=>{calls++;return reply('{"type":"open_url","value":"https:');}),/could not finish its action/);assert.equal(calls,2);
+});
+test('cancellation prevents creative interpretation from running',async()=>{
+  const controller=new AbortController();await assert.rejects(()=>interpret({...args,signal:controller.signal},async()=>{controller.abort();return reply('{"type":"keys","value":"mute"}');}),/stopped/);
 });

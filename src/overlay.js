@@ -12,7 +12,7 @@ async function submit(){
   // Crop to ink so a small screen gesture does not become a tiny full-desktop image.
   const points=strokes.flatMap(s=>s.points),xs=points.map(p=>p[0]),ys=points.map(p=>p[1]);
   const x=Math.max(0,Math.min(...xs)-20),y=Math.max(0,Math.min(...ys)-20),w=Math.min(canvas.width-x,Math.max(...xs)-x+20),h=Math.min(canvas.height-y,Math.max(...ys)-y+20);
-  const output=document.createElement('canvas'),scale=Math.min(1,512/Math.max(w,h));output.width=Math.max(1,Math.round(w*scale));output.height=Math.max(1,Math.round(h*scale));
+  const output=document.createElement('canvas'),scale=Math.min(1,768/Math.max(w,h));output.width=Math.max(1,Math.round(w*scale));output.height=Math.max(1,Math.round(h*scale));
   const c=output.getContext('2d');c.fillStyle='#fff';c.fillRect(0,0,output.width,output.height);c.lineCap='round';c.lineJoin='round';c.lineWidth=4*scale;c.strokeStyle='#172018';
   for(const s of strokes){c.beginPath();s.points.forEach((p,i)=>i?c.lineTo((p[0]-x)*scale,(p[1]-y)*scale):c.moveTo((p[0]-x)*scale,(p[1]-y)*scale));c.stroke()}
   try{await window.doodle.overlaySubmit({image:output.toDataURL('image/png'),strokes});}catch(e){message(e.message);}
