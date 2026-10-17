@@ -20,8 +20,12 @@ test('Gemini sends inline images, schema and a header-only key to Google',async(
   assert.equal(body.contents[0].parts[2].inlineData.mimeType,'image/png');
   assert.equal(body.contents[0].parts[2].inlineData.data,'AAAA');
   assert.equal(body.generationConfig.responseMimeType,'application/json');
+  assert.equal(body.generationConfig.thinkingConfig.thinkingLevel,'low');
   assert.ok(body.generationConfig.responseJsonSchema.required.includes('actions'));
   assert.match(body.systemInstruction.parts[0].text,/DESKTOP OVERLAY MODE/);
+  assert.match(body.systemInstruction.parts[0].text,/Never substitute/);
+  assert.match(body.systemInstruction.parts[0].text,/circle around an existing Dock icon/);
+  assert.match(body.systemInstruction.parts[0].text,/green speech bubble is Messages/);
 });
 test('Gemini blocks unsafe, empty and cut-short responses',async()=>{
   for (const [data,pattern] of [
@@ -62,4 +66,13 @@ test('environment configuration preserves existing OpenAI users and validates up
   assert.throws(()=>updateSettings(state,{provider:'openai',model:'bad/model'}),/model ID/);
   assert.equal(state.provider,'gemini'); assert.equal(state.key,'gemini-secret');
   assert.throws(()=>updateSettings(state,{provider:'unknown'}),/Choose/);
+});
+
+test('custom legacy models are not sent unsupported thinking-level options',async()=>{
+  let body;
+  await interpret({...args,model:'gemini-2.5-flash'},async(_,opts)=>{body=JSON.parse(opts.body);return {ok:true,json:async()=>geminiPlan(plan)};});
+  assert.equal(body.generationConfig.thinkingConfig,undefined);
+});
+test('provider overload reports availability instead of blaming credentials',async()=>{
+  await assert.rejects(()=>interpret(args,async()=>({ok:false,status:503})),/temporarily unavailable/);
 });

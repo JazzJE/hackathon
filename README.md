@@ -33,7 +33,7 @@ Without a key, four labeled preset demos let you try drawing tools, plan preview
 5. Review the interpreted actions and **Review marked desktop**. The preview combines the screenshot, your drawing, and green click targets or window regions.
 6. **Rehearsal mode** is on by default: play through the steps without touching the desktop. Turn it off and run the same reviewed plan for real.
 
-Desktop mode sends the screenshot of the selected display, the drawing, and up to 300 non-hidden desktop item names to the selected AI provider **only when you press Done**. It does not stream the screen. Captures stay in session memory and are not added to the sketch gallery or saved to disk. OpenAI requests use `store: false`. Google free-tier submissions may be used to improve Google products; avoid capturing private desktop content when using that tier.
+Desktop mode sends the screenshot of the selected display, the drawing, installed app names and IDs, and up to 300 non-hidden desktop item names to the selected AI provider **only when you press Done**. It does not stream the screen. Captures stay in session memory and are not added to the sketch gallery or saved to disk. OpenAI requests use `store: false`. Google free-tier submissions may be used to improve Google products; avoid capturing private desktop content when using that tier.
 
 ### Three competition tricks
 
@@ -45,13 +45,13 @@ Target locations belong to the captured display, including its offset and scalin
 
 ### macOS permissions
 
-The desktop overlay needs **Screen Recording** permission for Electron during development, or Doodle Do when packaged. Keyboard shortcuts, clicking, and window arrangement need **Accessibility** permission. Enable these in **System Settings → Privacy & Security**, then restart if macOS requests it. The app reports capture or automation errors; it does not bypass permissions.
+The desktop overlay needs **Screen Recording** permission for Electron during development, or Doodle Do when packaged. Keyboard shortcuts, clicking, and window arrangement need **Accessibility** permission. Enable these in **System Settings → Privacy & Security**, then restart if macOS requests it. When launched from a terminal, IDE, or this chat, macOS can attribute Screen Recording and Accessibility to that launcher instead of Electron. If Electron is enabled but the app still reports denial, check the launching app's permission and restart Doodle Do. The app reports capture or automation errors; it does not bypass permissions.
 
 ## The sketchpad
 
 Draw with mouse, pen, or touch. Choose four inks, brush size, pen or transparent eraser, undo and redo. **B** selects the pen, **E** the eraser, and **⌘/Ctrl Z** undoes a stroke (**Shift** redoes it).
 
-Add an optional hint and click **Read my doodle**. The sketchpad sends only the drawing and hint, not a screenshot. Changing a stroke, hint, or settings invalidates the previous plan.
+Add an optional hint and click **Read my doodle**. The sketchpad sends the drawing, optional hint and app catalog names/IDs, not a screenshot. Changing a stroke, hint, or settings invalidates the previous plan.
 
 - **Deal me a challenge** gives you a random prompt and 30 seconds, starting with your first stroke. The timer never locks the canvas.
 - The **session sketchbook** remembers up to eight sketchpad guesses. Restoring a sketch requires a fresh interpretation; it cannot run a stale plan. It is cleared when the app closes.
@@ -59,7 +59,11 @@ Add an optional hint and click **Read my doodle**. The sketchpad sends only the 
 
 ## Desktop actions
 
-Built-in actions open supported apps and HTTP/HTTPS URLs, send known shortcuts, target a screen location, move named desktop items to Trash, and arrange app windows. macOS includes Safari, TextEdit, Finder, Chrome, Firefox, Spotify, Discord, VS Code, VLC, and Calculator. Windows includes Chrome, Firefox, Spotify, Discord, VS Code, VLC, Notepad, Calculator, Paint, and Explorer.
+Doodle Do discovers installed apps at startup instead of using a fixed app whitelist. On macOS it scans `/Applications`, `~/Applications`, `/System/Applications` and system app bundles; on Windows it uses Start-menu app registrations. **Settings → Installed apps** shows the count, **Refresh app list** picks up new installs, and **Add an app…** includes `.app` bundles or Windows executables stored elsewhere. Only an app selected from this local catalog can be launched; the model cannot invent an executable path. App names and catalog IDs are sent to the selected AI provider for matching; local executable paths stay on your computer.
+
+Built-in actions open catalog apps and HTTP/HTTPS URLs, send known shortcuts, target a screen location, move named desktop items to Trash, and arrange app windows. macOS layouts identify the target process by its bundle ID, including Messages and third-party apps. Windows launches use exact registered AppIDs; placement requires a matching top-level app window. Some apps do not expose resizable windows or enforce minimum sizes.
+
+Gemini 3 requests use low reasoning effort for quicker recognition. The waiting view displays elapsed seconds and a Stop option; the inspector reports the measured interpretation time. Provider load can still cause delays.
 
 Windows-only, opt-in settings retain the original prototype’s **Install missing apps** through exact Winget IDs and **Full computer control** for AI-written PowerShell. Custom scripts are disabled for desktop-overlay interpretation; overlay actions use the typed built-in commands. Inspect scripts before running them. Installing a missing app can require interaction; launch it again after installation completes.
 

@@ -8,6 +8,8 @@ contextBridge.exposeInMainWorld('doodle', {
   onOverlayError: callback => ipcRenderer.on('overlay-error',(_,message) => callback(message)),
   onOverlayCancelled: callback => ipcRenderer.on('overlay-cancelled',() => callback()),
   openKeySetup: provider => ipcRenderer.invoke('key-setup',provider),
+  refreshApps: () => ipcRenderer.invoke('refresh-apps'),
+  addApp: () => ipcRenderer.invoke('add-app'),
   info: () => ipcRenderer.invoke('info'),
   settings: args => ipcRenderer.invoke('settings', args),
   invalidate: () => ipcRenderer.invoke('invalidate'),

@@ -1210,3 +1210,7 @@ dialog .primary {
 #keyLabel { float:none; color:var(--ink); font-size:11px; }
 .provider-setup { margin:8px 0 15px; }
 .provider-setup #providerHelp { font-size:9px; }
+
+.app-library { margin:16px 0; padding:12px; border:1px solid #d9dfce; border-radius:7px; }
+.app-library strong { font-size:11px; }
+.app-library>div { display:flex; gap:18px; }

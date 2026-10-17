@@ -1,15 +1,23 @@
-const { app, BrowserWindow, ipcMain, globalShortcut, screen, desktopCapturer, systemPreferences, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, globalShortcut, screen, desktopCapturer, systemPreferences, shell, dialog } = require('electron');
 const path = require('node:path');
-const { interpret, validate, commandFor, runCommand, terminate, arrangeCommand, supportedApps, PROVIDERS } = require('./agent');
+const { interpret, validate, commandFor, runCommand, terminate, arrangeCommand, supportedApps, PROVIDERS, APPS } = require('./agent');
 let win, pending = null, active = null, stopped = false, busy = false, controller = null;
 const {desktopInventory, trashDesktopItems, trashNames, clickCommand, layoutFrom, layoutRect} = require('./desktop');
 let overlay = null, capturedFrame = null, pendingFrame = null, openingOverlay = false, overlayHotkeyAvailable = false, overlaySubmitted = false;
 const platform = process.platform;
 const {createSettings,updateSettings,publicSettings} = require('./settings');
 const settings = createSettings(process.env,platform);
+const {discoverInstalledApps,readMacApp,catalogId,publicCatalog} = require('./apps');
+let appCatalog, catalogError = '';
+function currentCatalog() {
+  if (platform === 'win32' && settings.install && appCatalog) return {...Object.fromEntries(Object.keys(APPS).map(id=>[id,{name:id,kind:'builtin'}])),...appCatalog};
+  return appCatalog;
+}
 let shortcutAvailable = false;
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  try { appCatalog = await discoverInstalledApps(platform); }
+  catch { catalogError = 'Could not scan installed apps. Refresh the app list in Settings.'; }
   win = new BrowserWindow({ width: 1440, height: 1000, minWidth: 960, minHeight: 720, backgroundColor: '#f8f5ef', webPreferences: { preload: path.join(__dirname,'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true } });
   win.loadFile(path.join(__dirname,'index.html'));
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
@@ -58,8 +66,28 @@ app.whenReady().then(() => {
 });
 function stop() { if (overlay) cancelOverlay(); stopped = true; pending = null; controller?.abort(); terminate(active); }
 function available() { if (busy || openingOverlay || overlay) throw Error('Finish or stop the current request first.'); }
-function info() { return {platform,...publicSettings(settings),shortcutAvailable,overlayHotkeyAvailable}; }
+function info() { return {platform,...publicSettings(settings),apps:publicCatalog(appCatalog),catalogError,shortcutAvailable,overlayHotkeyAvailable}; }
 ipcMain.handle('info', info);
+ipcMain.handle('refresh-apps',async () => {
+  available(); busy = true;
+  try { appCatalog = await discoverInstalledApps(platform); catalogError = ''; pending = null; pendingFrame = null; return info(); }
+  finally { busy = false; }
+});
+ipcMain.handle('add-app',async () => {
+  available(); busy = true;
+  try {
+    const chosen = await dialog.showOpenDialog(win,{title:'Add an app to Doodle Do',properties:['openFile'],filters:[{name:'Applications',extensions:platform === 'darwin' ? ['app'] : ['exe']}]});
+    if (!chosen.canceled && chosen.filePaths.length) {
+      const location = chosen.filePaths[0];
+      let selected;
+      if (platform === 'darwin') selected = await readMacApp(location);
+      else if (platform === 'win32' && location.toLowerCase().endsWith('.exe')) { const name = path.basename(location,'.exe'); selected = {id:catalogId(name,location),entry:{name,path:location,kind:'windows-exe'}}; }
+      else throw Error('Choose a macOS app or Windows executable.');
+      appCatalog = {...appCatalog,[selected.id]:selected.entry}; pending = null; pendingFrame = null;
+    }
+    return info();
+  } finally { busy = false; }
+});
 ipcMain.handle('key-setup',(_,provider) => {
   if (!Object.hasOwn(PROVIDERS,provider)) throw Error('Unknown provider.');
   return shell.openExternal(PROVIDERS[provider].keyUrl);
@@ -77,10 +105,11 @@ ipcMain.handle('interpret', async (_, args = {}) => {
   if (args.overlay === true && !frame) throw Error('Open the desktop canvas and draw again.');
   busy = true; stopped = false; pending = null; controller = new AbortController();
   try {
-    const plan = await interpret({image:args.image,hint:args.hint,key:settings.key,model:settings.model,provider:settings.provider,allowShell:!frame && settings.shell,platform,signal:controller.signal,desktop:frame ? {image:frame.image,names:[...frame.inventory.keys()]} : undefined});
+    const startedAt = performance.now();
+    const plan = await interpret({image:args.image,hint:args.hint,key:settings.key,model:settings.model,provider:settings.provider,allowShell:!frame && settings.shell,platform,signal:controller.signal,desktop:frame ? {image:frame.image,names:[...frame.inventory.keys()]} : undefined,appCatalog:currentCatalog()});
     if (stopped) throw Error('Interpretation cancelled. Your drawing is still here.');
     pending = plan; pendingFrame = frame;
-    return plan;
+    return {...plan,interpretationMs:Math.round(performance.now()-startedAt)};
   } catch (e) {
     if (controller.signal.aborted) throw Error('Interpretation cancelled. Your drawing is still here.');
     throw e;
@@ -96,13 +125,13 @@ ipcMain.handle('demo', (_, name) => {
   };
   if (!Object.hasOwn(demos,name)) throw Error('Unknown demo.');
   pendingFrame = null; capturedFrame = null;
-  pending = validate(demos[name], platform);
+  pending = validate(demos[name], platform, currentCatalog());
   return pending;
 });
 ipcMain.handle('execute', async (_, options = {}) => {
   available();
   if (!pending) throw Error('Interpret this drawing again before running it.');
-  const plan = validate(pending, platform);
+  const plan = validate(pending, platform, currentCatalog());
   if (!plan.actions.length || plan.confidence < .65) throw Error('Drawing is unclear. Add a detail and try again.');
   const frame = pendingFrame;
   if (plan.actions.some(a => ['click','trash_files','arrange_app'].includes(a.type)) && !frame) throw Error('This plan needs a fresh desktop capture.');
@@ -127,13 +156,13 @@ ipcMain.handle('execute', async (_, options = {}) => {
         let command;
         if (action.type === 'click') command = clickCommand(action.value,frame.bounds,platform,point => platform === 'win32' ? screen.dipToScreenPoint(point) : point);
         else if (action.type === 'arrange_app') {
-          const layout = layoutFrom(action.value,supportedApps(platform));
+          const layout = layoutFrom(action.value,supportedApps(platform,currentCatalog()));
           const rect = layoutRect(layout,frame.bounds);
           const area = frame.workArea;
           rect.x = Math.max(rect.x,area.x); rect.y = Math.max(rect.y,area.y);
           rect.width = Math.min(rect.width,area.x+area.width-rect.x); rect.height = Math.min(rect.height,area.y+area.height-rect.y);
-          command = arrangeCommand(layout,platform === 'win32' ? screen.dipToScreenRect(null,rect) : rect,platform,settings.install);
-        } else command = commandFor(action,{platform,install:settings.install});
+          command = arrangeCommand(layout,platform === 'win32' ? screen.dipToScreenRect(null,rect) : rect,platform,settings.install,currentCatalog());
+        } else command = commandFor(action,{platform,install:settings.install,appCatalog:currentCatalog()});
         results.push(await runCommand(command,child => {active = child;})); active = null;
         if (action.type === 'click') await pause(250);
       }

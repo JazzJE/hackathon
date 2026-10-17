@@ -4,7 +4,7 @@ let strokes = [], future = [], current = null, pointer = null, erasing = false, 
 let busy = false, plan = null, source = '', guesses = 0, runs = 0, gallery = [], info = null;
 let challengeTimer = null, challengeReady = false, seconds = 30;
 const actionNames = {close_tab:'Close the current tab',new_tab:'Open a new tab',undo:'Undo',redo:'Redo',save:'Save',copy:'Copy',paste:'Paste',select_all:'Select all',switch_window:'Switch windows',show_desktop:'Show the desktop',volume_up:'Turn volume up',volume_down:'Turn volume down',mute:'Toggle mute'};
-function appName(value) { return ({safari:'Safari',chrome:'Google Chrome',firefox:'Firefox',spotify:'Spotify',discord:'Discord',vscode:'Visual Studio Code',vlc:'VLC',notepad:info?.platform === 'darwin' ? 'TextEdit' : 'Notepad',calculator:'Calculator',paint:'Paint',explorer:info?.platform === 'darwin' ? 'Finder' : 'File Explorer'})[value] || value; }
+function appName(value) { return info?.apps?.[value]?.name || ({safari:'Safari',chrome:'Google Chrome',firefox:'Firefox',spotify:'Spotify',discord:'Discord',vscode:'Visual Studio Code',vlc:'VLC',notepad:info?.platform === 'darwin' ? 'TextEdit' : 'Notepad',calculator:'Calculator',messages:'Messages',mail:'Mail',notes:'Notes',calendar:'Calendar',reminders:'Reminders',facetime:'FaceTime',paint:'Paint',explorer:info?.platform === 'darwin' ? 'Finder' : 'File Explorer'})[value] || value; }
 function actionLabel(action) {
   if (action.type === 'open_app') return `Open ${appName(action.value)}`;
   if (action.type === 'open_url') return `Open ${new URL(action.value).hostname}`;
@@ -101,7 +101,7 @@ function showPlan(p, origin) {
   $('planBadge').textContent = p.confidence >= .65 && p.actions.length ? 'GUESS READY' : 'NEEDS A CLUE';
   $('planTitle').textContent = p.title; $('explanation').textContent = p.explanation;
   $('planMeta').hidden = false; $('sourceBadge').textContent = origin === 'demo' ? 'PRESET DEMO' : origin === 'desktop' ? 'DESKTOP + AI' : 'AI INTERPRETATION';
-  $('confidence').textContent = `${Math.round(p.confidence*100)}% confident`;
+  $('confidence').textContent = `${Math.round(p.confidence*100)}% confident${Number.isFinite(p.interpretationMs) ? ` · ${(p.interpretationMs/1000).toFixed(1)}s` : ''}`;
   $('actions').replaceChildren();
   p.actions.forEach((action,i) => {
     const row = document.createElement('li'), num = document.createElement('span'), content = document.createElement('div'), title = document.createElement('strong');
@@ -149,19 +149,26 @@ function renderGallery() {
     $('gallery').append(button);
   });
 }
+async function requestInterpretation(args) {
+  const startedAt = performance.now();
+  const provider = info?.provider === 'gemini' ? 'Gemini' : 'OpenAI';
+  const update = () => {
+    const seconds = Math.floor((performance.now()-startedAt)/1000);
+    status(seconds >= 12 ? `Still waiting on ${provider} · ${seconds}s. Stop cancels this request.` : `${args.overlay ? 'Reading your desktop marks' : 'Decoding your doodle'} with ${provider} · ${seconds}s…`);
+  };
+  update();
+  const timer = setInterval(update,1000);
+  try { return await window.doodle.interpret(args); }
+  finally { clearInterval(timer); }
+}
 $('interpret').onclick = () => work(async () => {
   const pixels = ctx.getImageData(0,0,canvas.width,canvas.height).data;
   if (!pixels.some((v,i) => i%4 === 3 && v > 0)) throw Error('A blank canvas is a bold statement. Add a little ink first.');
   invalidate(); $('planCard').dataset.state = 'thinking'; $('planBadge').textContent = 'READING THE ROOM'; $('planTitle').textContent = 'Connecting the questionable dots…';
   $('interpret').textContent = 'Deciphering…';
-  const messages = ['Squinting at your masterpiece…','Consulting the department of wild guesses…','Turning artistic license into a plan…'];
-  let tick = 0; status(messages[0]);
-  const interval = setInterval(() => status(messages[++tick % messages.length]),3000);
-  try {
-    const p = await window.doodle.interpret({image:snapshot().toDataURL('image/png'),hint:$('hint').value});
-    showPlan(p,'ai'); guesses++; $('guessCount').textContent = guesses; remember(p,'ai');
-    status(p.confidence < .65 || !p.actions.length ? 'A little mysterious. Add a detail or a hint, then try again.' : 'That’s my best guess. Inspect the steps, then give it a go.');
-  } finally { clearInterval(interval); }
+  const p = await requestInterpretation({image:snapshot().toDataURL('image/png'),hint:$('hint').value});
+  showPlan(p,'ai'); guesses++; $('guessCount').textContent = guesses; remember(p,'ai');
+  status(p.confidence < .65 || !p.actions.length ? 'A little mysterious. Add a detail or a hint, then try again.' : 'That’s my best guess. Inspect the steps, then give it a go.');
 },'thinking');
 function updateMode() {
   const rehearsal = $('rehearsal').checked;
@@ -231,6 +238,7 @@ function applyInfo(state) {
   $('connection').classList.toggle('connected',state.hasKey);
   $('model').value = state.model; $('shell').checked = state.shell; $('install').checked = state.install;
   refreshProvider();
+  $('appCatalogStatus').textContent = state.catalogError || `${Object.keys(state.apps || {}).length} installed apps available. Add apps from other folders below.`;
   $('windowsOptions').hidden = state.platform !== 'win32'; $('macHelp').hidden = state.platform !== 'darwin';
   $('platformLabel').textContent = `${state.platform === 'darwin' ? 'MACOS' : state.platform === 'win32' ? 'WINDOWS' : 'REHEARSAL'} EDITION / 02`;
   $('noteLabel').textContent = `A little page → ${appName('notepad')}`;
@@ -252,6 +260,18 @@ $('provider').onchange = () => {
   $('model').value = info.providers[$('provider').value].model;
   refreshProvider();
 };
+async function updateAppLibrary(method) {
+  $('refreshApps').disabled = true; $('addApp').disabled = true;
+  try {
+    info = await window.doodle[method]();
+    $('appCatalogStatus').textContent = info.catalogError || `${Object.keys(info.apps || {}).length} installed apps available. Add apps from other folders below.`;
+    refreshProvider(); invalidate(); $('settingsStatus').textContent = 'App library updated.';
+  }
+  catch(e) { $('settingsStatus').textContent = e.message; }
+  finally { $('refreshApps').disabled = false; $('addApp').disabled = false; }
+}
+$('refreshApps').onclick = () => updateAppLibrary('refreshApps');
+$('addApp').onclick = () => updateAppLibrary('addApp');
 $('getApiKey').onclick = async () => {
   try { await window.doodle.openKeySetup($('provider').value); }
   catch (e) { $('settingsStatus').textContent = e.message; }
@@ -299,8 +319,9 @@ window.doodle.onOverlayDrawing(args => work(async () => {
   $('planCard').dataset.state = 'thinking'; $('planBadge').textContent = 'READING YOUR DESKTOP';
   $('planTitle').textContent = 'A desktop with directions.';
   $('explanation').textContent = 'Matching your marks to the things underneath them…';
-  status('Interpreting the captured desktop and your drawing…');
-  const p = await window.doodle.interpret({image:args.image,overlay:true});
+  $('desktopPreviewBackground').src = args.preview; $('desktopPreviewSketch').src = args.image; $('desktopPreview').hidden = false;
+  $('planCard').scrollIntoView({block:'nearest'});
+  const p = await requestInterpretation({image:args.image,overlay:true});
   showPlan(p,'desktop'); guesses++; $('guessCount').textContent = guesses;
   $('desktopPreviewBackground').src = args.preview; $('desktopPreviewSketch').src = args.image; $('desktopPreview').hidden = false; $('backToSketchpad').hidden = false;
   $('captureBackground').src = args.preview; $('captureSketch').src = args.image; markTargets(p.actions); $('reviewCapture').hidden = false;

@@ -70,3 +70,14 @@ test('empty actions and empty or oversized titles are rejected',()=>{
   assert.throws(()=>validate({...plan([]),title:''}));
   assert.throws(()=>validate({...plan([]),title:'x'.repeat(161)}));
 });
+
+test('macOS Messages is recognized, launched, and arranged as Messages',()=>{
+  const {commandFor,arrangeCommand} = require('../src/agent');
+  assert.doesNotThrow(()=>validate(plan([{type:'open_app',value:'messages'}]),'darwin'));
+  assert.throws(()=>validate(plan([{type:'open_app',value:'messages'}]),'win32'));
+  assert.deepEqual(commandFor({type:'open_app',value:'messages'},{platform:'darwin'}).args,['-a','Messages']);
+  const action=arrangeCommand({app:'messages'},{x:20,y:30,width:800,height:600},'darwin');
+  assert.match(action.args[1],/tell application "Messages" to activate/);
+  assert.match(action.args[1],/tell process "Messages"/);
+  assert.ok(!action.args[1].includes('Code'));
+});
