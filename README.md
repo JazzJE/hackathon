@@ -1,6 +1,6 @@
 # ✳ Doodle Do
 
-**Bad drawings. Worse decisions.** A Windows desktop app that turns sketches into questionable computer actions. Comedy mode is the default: money opens Crypto.com, a heart searches for recovery from being left on read, and coffee prescribes a ten-hour nap. Every topic gets a short roast on screen. Turn Comedy mode off in Settings for literal computer control.
+**Bad drawings. Worse decisions.** A Windows desktop app that turns sketches into questionable computer actions. Comedy mode is the default: money opens crypto.com/dogecoin, a heart searches for recovery from being left on read, and coffee prescribes a ten-hour nap. Every topic gets a short roast on screen. Turn Comedy mode off in Settings for literal computer control.
 
 ## Draw over your screen
 

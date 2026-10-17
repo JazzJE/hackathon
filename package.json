@@ -1,6 +1,6 @@
 {
   "name": "doodle-do",
-  "version": "1.4.1",
+  "version": "1.4.2",
   "private": true,
   "description": "Draw questionable ideas. Make your computer do them.",
   "main": "src/main.js",
