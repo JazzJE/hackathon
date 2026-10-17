@@ -1,7 +1,20 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { validate, scriptFor, interpret } = require('../src/agent');
+const { validate, resolvePlan, scriptFor, interpret } = require('../src/agent');
 const plan = actions => ({title:'Test',explanation:'Test drawing',confidence:.9,actions});
+test('only plans with no plausible action become a Google Images cat search',()=>{
+  for(const original of [{...plan([]),confidence:0},plan([])]){
+    const result=resolvePlan(original);
+    assert.equal(result.fallback,true);
+    assert.deepEqual(result.actions,[{type:'open_url',value:'https://www.google.com/search?tbm=isch&q=cat+images'}]);
+  }
+  const clear=plan([{type:'open_app',value:'notepad'}]);
+  assert.equal(resolvePlan(clear),clear);
+  for(const confidence of [.4,.01,0]){
+    const guess={...clear,confidence};
+    assert.equal(resolvePlan(guess),guess,'low confidence must not suppress a plausible action');
+  }
+});
 test('rejects unknown actions, bad URLs, and unbounded plans',()=>{
   for(const a of [{type:'delete',value:'x'},{type:'open_url',value:'file:///C:/secret'},{type:'keys',value:'arbitrary'},{type:'open_app',value:'missing'}]) assert.throws(()=>validate(plan([a])));
   assert.throws(()=>validate(plan(Array(9).fill({type:'keys',value:'save'}))));

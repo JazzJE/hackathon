@@ -14,7 +14,7 @@ npm install
 npm start
 ```
 
-Or launch the portable **Doodle Do.exe** after setup. Local AI is the default. Draw, click **Make it happen**, inspect the plan, and click **Run this plan**. No account, API key, or per-request API charges. After the initial downloads, local recognition works without internet; actions that open websites or install apps still require it.
+Or launch the portable **Doodle Do.exe** after setup. Local AI is the default. Draw and click **Make it happen**: the app interprets your drawing and immediately runs the resulting plan. No second click, account, API key, or per-request API charges. After the initial downloads, local recognition works without internet; actions that open websites or install apps still require it.
 
 The default model is **Gemma 3 4B** (roughly 3.4 GB to download), served through [Ollama](https://ollama.com/library/gemma3:4b) on `127.0.0.1:11434`. Allow several additional GB for the runtime and memory during inference. The first drawing takes longer while the model loads. CPU-only systems can take tens of seconds or minutes. Drawings and hints stay on this computer in local mode. A local model can misinterpret drawings; the displayed confidence is the model's own estimate.
 
@@ -31,7 +31,7 @@ The three example cards load **preset demo plans**, not AI recognition. Click **
 1. Draw using mouse, pen, or touch. Undo, erase, clear, and adjust brush size.
 2. Optionally add a hint. Click **Make it happen**.
 3. AI returns a title, explanation, confidence, and up to eight actions. No desktop screenshots or other computer data are sent to the model.
-4. Inspect the plan, then run it. Low-confidence plans cannot execute.
+4. The plan appears and runs automatically, including low-confidence best guesses. If the AI finds no plausible action, it takes a second look. Only if it still has absolutely no interpretation does the app open Google Images for cats. Confidence alone never triggers the cat fallback. App installation and PowerShell still require their respective Settings toggles to be enabled before you submit the drawing.
 5. The sketchpad minimizes, returning focus to the previous window. Shortcuts affect that window. A result appears when execution finishes.
 
 ## What it can do
@@ -40,7 +40,7 @@ The three example cards load **preset demo plans**, not AI recognition. Click **
 - Open HTTP/HTTPS URLs.
 - Close/new tab, undo/redo, save, copy/paste, select all, switch windows, show desktop, volume controls.
 - With **Install missing apps** enabled, install supported missing third-party apps through exact Winget IDs. Windows may request elevation or installer interaction. After installation, draw the logo again to launch it.
-- With **Full computer control** enabled, execute AI-generated PowerShell with your current Windows permissions. This enables broader tasks beyond the built-in actions. It is unrestricted code execution, so read the displayed script before running it.
+- With **Full computer control** enabled, execute AI-generated PowerShell with your current Windows permissions. This enables broader tasks beyond the built-in actions. It is unrestricted code execution and runs automatically after recognition when you click **Make it happen**.
 
 **Stop actions** or **Ctrl+Alt+Backspace** cancels drawing recognition, terminates the current command tree, and stops subsequent steps. It cannot undo completed actions or terminate an already detached application/installer. Commands time out after three minutes; local recognition after five minutes. The global shortcut works while the sketchpad is minimized; another application may reserve it on some systems.
 

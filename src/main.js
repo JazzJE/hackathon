@@ -1,6 +1,6 @@
 const { app, BrowserWindow, ipcMain, globalShortcut } = require('electron');
 const path = require('node:path');
-const { interpret, validate, powershell, scriptFor } = require('./agent');
+const { interpret, validate, resolvePlan, powershell, scriptFor } = require('./agent');
 const { ensureLocalAI, localStatus } = require('./local-ai');
 let win, pending = null, active = null, stopped = false, busy = false, recognition = null;
 const smokeMode = process.env.DOODLE_SMOKE === '1' || process.env.DOODLE_LOCAL_SMOKE === '1';
@@ -24,22 +24,12 @@ app.whenReady().then(() => {
           const start=Date.now();
           while(document.getElementById('interpret').disabled){if(Date.now()-start>310000)throw Error('Local recognition timed out');await new Promise(r=>setTimeout(r,200));}
           const actions=document.getElementById('actions').textContent;
-          if(!document.getElementById('status').textContent.startsWith('Plan ready.'))throw Error(document.getElementById('status').textContent);
+          if(document.getElementById('status').textContent!=='Done.')throw Error(document.getElementById('status').textContent);
           if(!actions.includes('open_app → notepad'))throw Error('Unexpected local recognition: '+actions);
-          return {local:true,keyRequired:false,title:document.getElementById('planTitle').textContent,actions,status:document.getElementById('status').textContent,elapsedSeconds:Math.round((Date.now()-start)/1000)};
+          return {local:true,keyRequired:false,autoExecuted:true,title:document.getElementById('planTitle').textContent,actions,status:document.getElementById('status').textContent,elapsedSeconds:Math.round((Date.now()-start)/1000)};
         })()`);
         console.log('LOCAL_SMOKE',JSON.stringify(localResult));
-        if(process.env.DOODLE_EXECUTE_SMOKE === '1') {
-          const execution=await win.webContents.executeJavaScript(`(async()=>{
-            document.getElementById('execute').click();
-            while(document.getElementById('interpret').disabled)await new Promise(r=>setTimeout(r,200));
-            const status=document.getElementById('status').textContent;
-            if(status!=='Done.')throw Error('Execution failed: '+status);
-            return {executed:true,status};
-          })()`);
-          console.log('EXECUTE_SMOKE',JSON.stringify(execution));
-          console.log(await powershell("for($i=0;$i -lt 25;$i++){if(Get-Process -Name Notepad -ErrorAction SilentlyContinue){Write-Output 'Notepad process verified';exit 0};Start-Sleep -Milliseconds 200};throw 'Notepad did not open'"));
-        }
+        console.log(await powershell("for($i=0;$i -lt 25;$i++){if(Get-Process -Name Notepad -ErrorAction SilentlyContinue){Write-Output 'Notepad process verified';exit 0};Start-Sleep -Milliseconds 200};throw 'Notepad did not open'"));
       }
       if(process.env.DOODLE_SCREENSHOT) require('node:fs').writeFileSync(process.env.DOODLE_SCREENSHOT,(await win.webContents.capturePage()).toPNG());
       app.exit(0);
@@ -54,16 +44,21 @@ ipcMain.handle('interpret', async (_, args) => {
   try {
     if(!args.provider || args.provider === 'local') await ensureLocalAI();
     if(recognition.signal.aborted) throw Error('Drawing recognition stopped.');
-    const result=await interpret({...args, key: args.key || process.env.OPENAI_API_KEY,signal:recognition.signal});
+    const request={...args, key: args.key || process.env.OPENAI_API_KEY,signal:recognition.signal};
+    let result=await interpret(request);
+    if(!result.actions.length && !recognition.signal.aborted) {
+      win.webContents.send('progress','Taking another look for the best possible interpretation…');
+      result=await interpret({...request,hint:`${String(args.hint || '').slice(0,700)} Take another look: choose the single most plausible computer action from any recognizable clue, even if uncertain. Return no actions only if there is absolutely no plausible interpretation.`});
+    }
     if(recognition.signal.aborted) throw Error('Drawing recognition stopped.');
-    pending=result; return pending;
+    pending=resolvePlan(result); return pending;
   } finally { busy=false; recognition=null; }
 });
 ipcMain.handle('demo', (_, name) => { if(busy) throw Error('An action is still running.'); const demos = { tab: {title:'Close the current tab',explanation:'A browser tab with a big X. Goodbye, tab.',confidence:1,actions:[{type:'keys',value:'close_tab'}]}, music: {title:'Open Spotify',explanation:'Three curved lines in a circle. Time for music.',confidence:1,actions:[{type:'open_app',value:'spotify'}]}, note: {title:'Open Notepad',explanation:'A little page for your next big idea.',confidence:1,actions:[{type:'open_app',value:'notepad'}]} }; if(!demos[name]) throw Error('Unknown demo'); pending = validate(demos[name]); return pending; });
 ipcMain.handle('execute', async (_, options) => {
   if(busy || !pending) throw Error('Interpret a drawing first.');
   const plan = validate(pending); pending = null;
-  if(!plan.actions.length || plan.confidence < .65) throw Error('Drawing is unclear. Try again.');
+  if(!plan.actions.length) throw Error('No action is available. Draw again.');
   if(plan.actions.some(a => a.type === 'shell') && !options.shell) throw Error('Enable full computer control to run PowerShell actions.');
   busy = true; stopped = false; const results = [];
   try {

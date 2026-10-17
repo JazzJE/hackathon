@@ -19,12 +19,22 @@ function validate(plan) {
   }
   return plan;
 }
+function resolvePlan(plan) {
+  validate(plan);
+  if(plan.actions.length) return plan;
+  return {
+    title:'No idea. Have some cats.',
+    explanation:'I could not find any plausible action in that drawing, so I am opening Google Images for cats instead.',
+    confidence:1, fallback:true,
+    actions:[{type:'open_url',value:'https://www.google.com/search?tbm=isch&q=cat+images'}]
+  };
+}
 const LOCAL_MODEL = 'gemma3:4b';
 const PLAN_SCHEMA = {
   type:'object', additionalProperties:false, required:['title','explanation','confidence','actions'],
   properties:{title:{type:'string'},explanation:{type:'string'},confidence:{type:'number',minimum:0,maximum:1},actions:{type:'array',maxItems:8,items:{type:'object',additionalProperties:false,required:['type','value'],properties:{type:{type:'string',enum:['open_app','open_url','keys','shell']},value:{type:'string'}}}}}
 };
-const INSTRUCTIONS = `You translate hand drawings into Windows computer actions. Return only JSON: {title:string,explanation:string,confidence:number,actions:[{type,value}]}. Up to 8 actions. Types: open_app (value one of ${Object.keys(APPS).join(',')}), open_url (https URL), keys (close_tab,new_tab,undo,redo,save,copy,paste,select_all,switch_window,show_desktop,volume_up,volume_down,mute), shell (PowerShell script for other tasks). App logos mean open_app; a browser tab or window with an X means keys close_tab. A page with writing means open_app notepad. A calculator means open_app calculator. A circle with three curved horizontal lines means open_app spotify. An X on a browser tab is an instruction to close it, not an app logo. If ambiguous use confidence below 0.65 and actions:[]; explain what to redraw. Never invent a goal from a blank image. shell runs with the user's privileges. Prefer built-in actions. Do not include markdown.`;
+const INSTRUCTIONS = `You translate hand drawings into Windows computer actions. Return only JSON: {title:string,explanation:string,confidence:number,actions:[{type,value}]}. Up to 8 actions. Types: open_app (value one of ${Object.keys(APPS).join(',')}), open_url (https URL), keys (close_tab,new_tab,undo,redo,save,copy,paste,select_all,switch_window,show_desktop,volume_up,volume_down,mute), shell (PowerShell script for other tasks). App logos mean open_app; a browser tab or window with an X means keys close_tab. A page with writing means open_app notepad. A calculator means open_app calculator. A circle with three curved horizontal lines means open_app spotify. An X on a browser tab is an instruction to close it, not an app logo. Try hard to interpret even very messy, partial, abstract or ambiguous drawings. Find recognizable clues and choose the single most plausible intended action. Always provide that best-guess action when there is any plausible interpretation, even if confidence is very low; explain your guess briefly. Uncertainty alone is not a reason to return no actions. Only return confidence:0 and actions:[] as an absolute last resort when there are no recognizable clues and you have no plausible interpretation whatsoever, such as a truly blank image. shell runs with the user's privileges. Prefer built-in actions. Do not include markdown.`;
 async function interpret({ image, hint = '', key, model, provider = 'local', signal }, fetcher = fetch) {
   if (!['local','openai'].includes(provider)) throw Error('Unknown AI provider.');
   if (provider === 'openai' && !key) throw Error('Add an OpenAI API key in Settings, or switch to local AI.');
@@ -92,4 +102,4 @@ function scriptFor(a, install) {
   // Start-menu discovery handles per-user installs absent from PATH.
   return `$name=${q(a.value)}; $entry=Get-StartApps | Where-Object { $_.Name -like ('*'+$name+'*') } | Select-Object -First 1; if($entry){ Start-Process explorer.exe -ArgumentList ('shell:AppsFolder\\'+$entry.AppID) } else { try { Start-Process ${q(app.launch)} -ErrorAction Stop } catch { ${install && app.id ? `& winget install --id ${q(app.id)} --exact --source winget --accept-package-agreements --accept-source-agreements; if($LASTEXITCODE -ne 0){throw 'App installation failed'}; Write-Output 'Installed. Draw the logo again to launch the app.'` : "throw 'App not found. Enable automatic installation in Settings to install supported apps.'"} } }`;
 }
-module.exports = { APPS, LOCAL_MODEL, validate, interpret, powershell, scriptFor };
+module.exports = { APPS, LOCAL_MODEL, validate, resolvePlan, interpret, powershell, scriptFor };
