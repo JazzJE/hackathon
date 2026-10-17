@@ -10,7 +10,7 @@ function ui(interpret=async()=>plan){
   const context=new Proxy({}, {get:()=>()=>{}});
   function element(id){if(!elements.has(id))elements.set(id,{value:'',textContent:'',disabled:false,checked:false,classList:{add(){},remove(){}},addEventListener(){},showModal(){},getContext:()=>context,toDataURL:()=> 'data:image/png;base64,AAAA'});return elements.get(id)}
   const demos=['tab','music','note'].map(name=>({...element(name),dataset:{demo:name}}));
-  const sandbox={console,localStorage:{getItem:()=>null,setItem(){}},document:{getElementById:element,querySelectorAll:()=>demos,createElement:()=>element('exportCanvas')},window:{doodle:{interpret,execute:async(options)=>{executions.push(options);return ['Done.']},demo:async()=>plan,localStatus:async()=>({ready:true,message:'Ready'}),stop:async()=>{},onProgress(){}}}};
+  const sandbox={console,localStorage:{getItem:()=>null,setItem(){}},document:{getElementById:element,querySelectorAll:()=>demos,createElement:()=>element('exportCanvas')},window:{doodle:{interpret,execute:async(options)=>{executions.push(options);return ['Done.']},demo:async()=>plan,localStatus:async()=>({ready:true,message:'Ready'}),syncSettings:async()=>{},openOverlay:async()=>{},onPlan(){},stop:async()=>{},onProgress(){}}}};
   vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../src/renderer.js'),'utf8'),sandbox);
   return {element,demos,executions};
 }

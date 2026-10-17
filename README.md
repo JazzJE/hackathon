@@ -1,6 +1,24 @@
 # ✳ Doodle Do
 
-**Bad drawings. Real consequences.** A Windows desktop app that turns sketches into computer actions. Draw a tab with an X to close a tab, a Spotify logo to open Spotify, or a more elaborate idea to generate a PowerShell plan.
+**Bad drawings. Worse decisions.** A Windows desktop app that turns sketches into questionable computer actions. Comedy mode is the default: money opens the real meme-coin market page, a heart searches for recovery from being left on read, and coffee prescribes a ten-hour nap. Every topic gets a short roast on screen. Turn Comedy mode off in Settings for literal computer control.
+
+## Draw over your screen
+
+With the app running, press **Ctrl+Alt+D**. The monitor under your cursor dims like Snipping Tool. Draw directly over the visible desktop, then press **Enter** to run, or **Esc** to cancel. Undo with Ctrl+Z. The **Screen** button opens the same overlay if another app owns the hotkey.
+
+Draw an X using two crossed strokes over a browser tab. The app middle-clicks the **tab under the drawing**, rather than closing whichever tab happens to be active. This works with browsers that close tabs on middle-click, including Chrome, Edge, and Firefox. Position the intersection on the tab itself. An X elsewhere will middle-click that location. Display scaling and monitor offsets are converted to physical mouse coordinates.
+
+Only the drawn ink goes to the model, not the desktop beneath it. Other screen drawings use the same comedy/literal mode and permissions as the main app. The overlay hides before execution and restores focus to the window you were drawing over.
+
+## Speed first
+
+- Two-stroke X and recognizable dollar signs use immediate gesture recognition, with no model request. Dollar signs use the instant path in Comedy mode.
+- A recognizable hint such as `money` or `heart` skips the model in Comedy mode.
+- Identical drawings are cached for the session (up to 32); engine, model, hint, and mode are included in the cache key.
+- Comedy mode uses the smaller **Moondream** vision model and generates only a tiny topic label. The jokes are built locally instead of waiting for prose.
+- Local models preload in the background and stay warm for an hour. A persistent Windows helper sends shortcuts/clicks without launching PowerShell for every input. Focus delay is reduced to 120 ms.
+
+Measured on the development machine: the overlay target-click test took about 0.48 seconds, a fresh Moondream money interpretation about 9.6 seconds versus 29 seconds with the previous Gemma path, and the exact repeat returned from cache in under 1 ms. These are example measurements, not guarantees; new complex drawings can still take several seconds on CPU.
 
 ## Run locally — no API key
 
@@ -16,23 +34,23 @@ npm start
 
 Or launch the portable **Doodle Do.exe** after setup. Local AI is the default. Draw and click **Make it happen**: the app interprets your drawing and immediately runs the resulting plan. No second click, account, API key, or per-request API charges. After the initial downloads, local recognition works without internet; actions that open websites or install apps still require it.
 
-The default model is **Gemma 3 4B** (roughly 3.4 GB to download), served through [Ollama](https://ollama.com/library/gemma3:4b) on `127.0.0.1:11434`. Allow several additional GB for the runtime and memory during inference. The first drawing takes longer while the model loads. CPU-only systems can take tens of seconds or minutes. Drawings and hints stay on this computer in local mode. A local model can misinterpret drawings; the displayed confidence is the model's own estimate.
+The default comedy model is [Moondream](https://ollama.com/library/moondream) (roughly 1.7 GB to download), served through Ollama on `127.0.0.1:11434`. Allow additional space and memory for the runtime. The first drawing can take longer while the model loads. Drawings and hints stay on this computer in local mode. Speed takes priority over exact recognition.
 
-The app starts an installed Ollama server if needed. In **Settings → Check local AI**, check whether your selected model is installed. If a download is interrupted, rerun setup or `ollama pull gemma3:4b`; Ollama resumes the download. You can choose another installed vision-capable model in Settings. Engine and model preferences persist across launches; permission toggles reset per session.
+The app starts an installed Ollama server if needed. In **Settings → Check local AI**, check whether your selected model is installed. If a download is interrupted, rerun setup or `ollama pull moondream`; Ollama resumes the download. You can choose another installed vision-capable model in Settings. Engine, model, and comedy preferences persist; permission toggles reset per session. Literal mode defaults to Gemma 3 4B: run `ollama pull gemma3:4b` if it is not installed.
 
 ## Optional OpenAI mode
 
 Select **OpenAI** in Settings, enter an API key, and choose an image-capable Responses API model available to your account. Default: `gpt-4.1-mini`. You can also set `OPENAI_API_KEY` before starting. The key is held in session memory, never saved by this app. Cloud mode sends your drawing and hint to OpenAI and uses separate API billing. Local mode never sends your drawing or key to OpenAI.
 
-The three example cards load **preset demo plans**, not AI recognition. Click **Run this plan** for a real computer action, or **Make it happen** to send the example drawing through the actual vision model.
+The example cards load **preset demo plans**, not AI recognition. Click **Run this plan** for a real computer action, or **Make it happen** to interpret and run the drawing. The dollar-sign example can use the instant gesture path. Comedy actions open real Google/YouTube searches or the meme-coin market page; nothing makes purchases, trades, or sends messages.
 
 ## The loop
 
 1. Draw using mouse, pen, or touch. Undo, erase, clear, and adjust brush size.
 2. Optionally add a hint. Click **Make it happen**.
-3. AI returns a title, explanation, confidence, and up to eight actions. No desktop screenshots or other computer data are sent to the model.
+3. A gesture, hint, cache hit, or AI returns the action. AI generates only the short command/topic, with the displayed explanation built locally. No desktop screenshots or other computer data are sent to the model.
 4. The plan appears and runs automatically, including low-confidence best guesses. If the AI finds no plausible action, it takes a second look. Only if it still has absolutely no interpretation does the app open Google Images for cats. Confidence alone never triggers the cat fallback. App installation and PowerShell still require their respective Settings toggles to be enabled before you submit the drawing.
-5. The sketchpad minimizes, returning focus to the previous window. Shortcuts affect that window. A result appears when execution finishes.
+5. The sketchpad minimizes, returning focus to the previous window. Shortcuts affect that window. Comedy actions show a roast and leave the opened website in front. Results and timing remain in the main app.
 
 ## What it can do
 
@@ -56,7 +74,7 @@ npm run dist -- --config.compression=store
 
 The last command builds a portable Windows executable under `dist/` (unsigned). Electron isolates the renderer with a sandboxed preload and a narrow IPC bridge. The main process validates plans and retains the executable plan rather than accepting scripts from the renderer. Full control and app installation are opt-in per session.
 
-Files: `src/agent.js` (local/cloud vision, validation, Windows command generation), `src/local-ai.js` (local server startup and model availability), `src/main.js` (desktop lifecycle and execution), `src/renderer.js` (canvas and UI). No hosted backend required.
+Files: `src/agent.js` (vision and validation), `src/comedy.js` (topic-to-punchline/web action mapping), `src/gestures.js` (instant X and dollar recognition), `src/native-host.*` (persistent Windows input helper), `src/overlay.*` (screen drawing), `src/local-ai.js` (local server and warmup), `src/main.js` (desktop lifecycle and execution), `src/renderer.js` (main canvas and UI). No hosted backend required.
 
 Integrations follow the [Ollama chat API](https://docs.ollama.com/api/chat) and [OpenAI image-input documentation](https://developers.openai.com/api/docs/guides/images-vision).
 

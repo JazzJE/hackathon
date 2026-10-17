@@ -17,6 +17,6 @@ try {
     }
     if (!$ready) { throw 'Ollama did not start. Open Ollama from the Start menu and try again.' }
 }
-& $ollamaPath pull gemma3:4b
+& $ollamaPath pull moondream
 if ($LASTEXITCODE -ne 0) { throw 'Model download failed. Run this script again to resume.' }
 Write-Host 'Local AI is ready. Start Doodle Do, draw, and click Make it happen. No API key needed.'

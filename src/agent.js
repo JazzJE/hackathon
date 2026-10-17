@@ -1,4 +1,5 @@
 const { spawn } = require('node:child_process');
+const {TOPICS,comedyPlan}=require('./comedy');
 const APPS = {
   chrome: { id: 'Google.Chrome', launch: 'chrome.exe' },
   firefox: { id: 'Mozilla.Firefox', launch: 'firefox.exe' },
@@ -12,7 +13,8 @@ const APPS = {
 function validate(plan) {
   if (!plan || typeof plan.title !== 'string' || typeof plan.explanation !== 'string' || !Number.isFinite(plan.confidence) || plan.confidence < 0 || plan.confidence > 1 || !Array.isArray(plan.actions) || plan.actions.length > 8) throw Error('The AI returned an invalid plan. Try drawing more clearly.');
   for (const a of plan.actions) {
-    if (!a || !['open_app','open_url','keys','shell'].includes(a.type) || typeof a.value !== 'string' || a.value.length > 12000) throw Error('Invalid action.');
+    if (!a || !['open_app','open_url','keys','shell','click'].includes(a.type) || typeof a.value !== 'string' || a.value.length > 12000) throw Error('Invalid action.');
+    if(a.type === 'click' && !/^(left|middle|right):-?\d{1,6}:-?\d{1,6}$/.test(a.value)) throw Error('Invalid click coordinates.');
     if (a.type === 'open_app' && !Object.hasOwn(APPS,a.value)) throw Error('Unknown app.');
     if (a.type === 'open_url' && !/^https?:\/\//i.test(a.value)) throw Error('Only web URLs are allowed.');
     if (a.type === 'keys' && !['close_tab','new_tab','undo','redo','save','copy','paste','select_all','switch_window','show_desktop','volume_up','volume_down','mute'].includes(a.value)) throw Error('Unknown shortcut.');
@@ -31,23 +33,43 @@ function resolvePlan(plan) {
 }
 const LOCAL_MODEL = 'gemma3:4b';
 const PLAN_SCHEMA = {
-  type:'object', additionalProperties:false, required:['title','explanation','confidence','actions'],
-  properties:{title:{type:'string'},explanation:{type:'string'},confidence:{type:'number',minimum:0,maximum:1},actions:{type:'array',maxItems:8,items:{type:'object',additionalProperties:false,required:['type','value'],properties:{type:{type:'string',enum:['open_app','open_url','keys','shell']},value:{type:'string'}}}}}
+  type:'object', additionalProperties:false, required:['actions'],
+  properties:{actions:{type:'array',maxItems:8,items:{type:'object',additionalProperties:false,required:['type','value'],properties:{type:{type:'string',enum:['open_app','open_url','keys','shell']},value:{type:'string'}}}}}
 };
-const INSTRUCTIONS = `You translate hand drawings into Windows computer actions. Return only JSON: {title:string,explanation:string,confidence:number,actions:[{type,value}]}. Up to 8 actions. Types: open_app (value one of ${Object.keys(APPS).join(',')}), open_url (https URL), keys (close_tab,new_tab,undo,redo,save,copy,paste,select_all,switch_window,show_desktop,volume_up,volume_down,mute), shell (PowerShell script for other tasks). App logos mean open_app; a browser tab or window with an X means keys close_tab. A page with writing means open_app notepad. A calculator means open_app calculator. A circle with three curved horizontal lines means open_app spotify. An X on a browser tab is an instruction to close it, not an app logo. Try hard to interpret even very messy, partial, abstract or ambiguous drawings. Find recognizable clues and choose the single most plausible intended action. Always provide that best-guess action when there is any plausible interpretation, even if confidence is very low; explain your guess briefly. Uncertainty alone is not a reason to return no actions. Only return confidence:0 and actions:[] as an absolute last resort when there are no recognizable clues and you have no plausible interpretation whatsoever, such as a truly blank image. shell runs with the user's privileges. Prefer built-in actions. Do not include markdown.`;
-async function interpret({ image, hint = '', key, model, provider = 'local', signal }, fetcher = fetch) {
+const INSTRUCTIONS = `Interpret a drawing as Windows commands. Respond ONLY with {"actions":[{"type":"...","value":"..."}]}. No explanation, title, confidence or markdown. Prefer one best-guess action. Types: open_app (${Object.keys(APPS).join(',')}), open_url (https URL), keys (close_tab,new_tab,undo,redo,save,copy,paste,select_all,switch_window,show_desktop,volume_up,volume_down,mute), shell (PowerShell for other tasks). App logo=open_app; X or crossed browser tab=keys close_tab; lined page=open_app notepad; calculator=open_app calculator; circle with 3 curved lines=open_app spotify. SPEED over accuracy: interpret messy or ambiguous marks; choose a plausible action even if uncertain. Only actions:[] for absolutely no plausible idea. Up to 8 actions. Prefer built-in actions; shell has user permissions.`;
+async function interpret({ image, hint = '', key, model, provider = 'local', signal, comedy=false }, fetcher = fetch) {
   if (!['local','openai'].includes(provider)) throw Error('Unknown AI provider.');
   if (provider === 'openai' && !key) throw Error('Add an OpenAI API key in Settings, or switch to local AI.');
   if (typeof image !== 'string' || !image.startsWith('data:image/png;base64,') || image.length > 8000000) throw Error('Invalid drawing.');
   const inputText = `Interpret this drawing. Optional user context: ${String(hint).slice(0,1000)}`;
   const timeout = AbortSignal.timeout(provider === 'local' ? 300000 : 60000);
   const requestSignal = signal ? AbortSignal.any([signal,timeout]) : timeout;
+  if(comedy){
+    const format={type:'object',required:['topic'],additionalProperties:false,properties:{topic:{type:'string',enum:[...TOPICS,'none']}}};
+    const prompt=`Which topic best matches this drawing? Choose ONE: ${TOPICS.join(', ')}. Use a plausible guess for messy drawings. Only none if no idea at all. Return JSON {"topic":"choice"}. Hint: ${String(hint).slice(0,300)}`;
+    let response;
+    if(provider==='local'){
+      try{response=await fetcher('http://127.0.0.1:11434/api/generate',{method:'POST',signal:requestSignal,headers:{'Content-Type':'application/json'},body:JSON.stringify({model:model||'moondream:latest',prompt,images:[image.slice('data:image/png;base64,'.length)],format,stream:false,keep_alive:'1h',options:{temperature:0,num_predict:24,num_ctx:2048}})});}
+      catch(e){if(signal?.aborted)throw Error('Drawing recognition stopped.');throw Error('Local comedy AI is unavailable. Check Ollama in Settings.');}
+      if(!response.ok)throw Error(response.status===404?'Download the fast vision model: ollama pull moondream':`Local comedy AI failed (${response.status}).`);
+      const data=await response.json();
+      let topic;try{topic=JSON.parse(data.response).topic}catch{throw Error('Comedy AI could not read that. Try a short hint.');}
+      if(topic==='none')return {title:'No idea',explanation:'No plausible topic yet.',confidence:0,actions:[]};
+      return validate(comedyPlan(topic));
+    }
+    response=await fetcher('https://api.openai.com/v1/responses',{method:'POST',signal:requestSignal,headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json'},body:JSON.stringify({model:model||'gpt-4.1-mini',store:false,instructions:prompt,text:{format:{type:'json_schema',name:'drawing_topic',strict:true,schema:format}},input:[{role:'user',content:[{type:'input_image',image_url:image}]}]})});
+    if(!response.ok)throw Error(`OpenAI request failed (${response.status}).`);
+    const data=await response.json(),text=(data.output||[]).flatMap(o=>o.content||[]).filter(c=>c.type==='output_text').map(c=>c.text).join('');
+    const topic=JSON.parse(text).topic;
+    if(topic==='none')return {title:'No idea',explanation:'No plausible topic yet.',confidence:0,actions:[]};
+    return validate(comedyPlan(topic));
+  }
   if(provider === 'local') {
     let response;
     try {
       response = await fetcher('http://127.0.0.1:11434/api/chat', {
         method:'POST', signal:requestSignal, headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({model:model || LOCAL_MODEL,stream:false,format:PLAN_SCHEMA,keep_alive:'10m',options:{temperature:0,num_predict:600,num_ctx:4096},messages:[{role:'system',content:INSTRUCTIONS},{role:'user',content:inputText,images:[image.slice('data:image/png;base64,'.length)]}]})
+        body:JSON.stringify({model:model || LOCAL_MODEL,stream:false,format:PLAN_SCHEMA,keep_alive:'1h',options:{temperature:0,num_predict:256,num_ctx:2048},messages:[{role:'system',content:INSTRUCTIONS},{role:'user',content:inputText,images:[image.slice('data:image/png;base64,'.length)]}]})
       });
     } catch(e) {
       if(signal?.aborted) throw Error('Drawing recognition stopped.');
@@ -74,7 +96,14 @@ async function interpret({ image, hint = '', key, model, provider = 'local', sig
   return parsePlan(text);
 }
 function parsePlan(text) {
-  try { return validate(JSON.parse(String(text).replace(/^```(?:json)?\s*|\s*```$/g, ''))); }
+  try {
+    const plan=JSON.parse(String(text).replace(/^```(?:json)?\s*|\s*```$/g, ''));
+    if(plan && !Object.hasOwn(plan,'title') && Array.isArray(plan.actions)) {
+      const action=plan.actions[0];
+      return validate({...plan,title:action?`${action.type.replace(/_/g,' ')}: ${action.value.slice(0,90)}`:'No idea',explanation:'Quick interpretation. No waiting for a long explanation.',confidence:plan.actions.length?1:0,quick:true});
+    }
+    return validate(plan);
+  }
   catch(e) { throw Error('AI returned an unreadable plan. Try a clearer drawing or a short hint.'); }
 }
 function powershell(script, onChild = () => {}) {
@@ -91,6 +120,7 @@ function powershell(script, onChild = () => {}) {
 const SHORTCUTS = {close_tab:'^w',new_tab:'^t',undo:'^z',redo:'^y',save:'^s',copy:'^c',paste:'^v',select_all:'^a',switch_window:'%{TAB}',volume_up:'{VOLUME_UP}',volume_down:'{VOLUME_DOWN}',mute:'{VOLUME_MUTE}'};
 function scriptFor(a, install) {
   if(a.type === 'shell') return a.value;
+  if(a.type === 'click') throw Error('Click actions require the Windows helper.');
   if(a.type === 'keys' && ['volume_up','volume_down','mute'].includes(a.value)) {
     const code = {volume_up:175,volume_down:174,mute:173}[a.value];
     return `Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public class DoodleKeys { [DllImport("user32.dll")] public static extern void keybd_event(byte key, byte scan, uint flags, UIntPtr extra); }'; [DoodleKeys]::keybd_event(${code},0,0,[UIntPtr]::Zero); [DoodleKeys]::keybd_event(${code},0,2,[UIntPtr]::Zero)`;

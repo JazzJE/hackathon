@@ -57,6 +57,15 @@ test('local AI is default, sends base64 image only to loopback, and needs no key
   assert.deepEqual(body.messages[1].images,['AAAA']);
   assert.equal(body.format.type,'object');
 });
+test('compact AI commands are expanded locally without generating explanations',async()=>{
+  let body;
+  const result=await interpret({image:'data:image/png;base64,AAAA'},async(_,options)=>{
+    body=JSON.parse(options.body);return {ok:true,json:async()=>({done:true,message:{content:'{"actions":[{"type":"open_app","value":"notepad"}]}'}})};
+  });
+  assert.equal(result.quick,true);assert.equal(result.actions[0].value,'notepad');
+  assert.deepEqual(body.format.required,['actions']);assert.equal(body.options.num_ctx,2048);
+  assert.equal(body.keep_alive,'1h');
+});
 test('local AI reports missing model, offline server, malformed JSON, and truncated output',async()=>{
   const args={image:'data:image/png;base64,AAAA'};
   await assert.rejects(()=>interpret(args,async()=>({ok:false,status:404})),/ollama pull gemma3:4b/);

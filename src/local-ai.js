@@ -33,4 +33,10 @@ async function localStatus(model=LOCAL_MODEL) {
     return {ready:models.includes(model),models,message:models.includes(model) ? `Local AI ready · ${model} · No API key needed` : `Ollama is running. Download your model: ollama pull ${model}`};
   } catch(e) {return {ready:false,models:[],message:e.message};}
 }
-module.exports = { ensureLocalAI, localStatus };
+const warming=new Map();
+async function warmLocal(model=LOCAL_MODEL){
+  if(warming.has(model))return warming.get(model);
+  const task=(async()=>{await ensureLocalAI();const r=await fetch('http://127.0.0.1:11434/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},signal:AbortSignal.timeout(120000),body:JSON.stringify({model,stream:false,keep_alive:'1h',options:{num_ctx:2048}})});if(!r.ok)throw Error('Model warmup failed.');})();
+  warming.set(model,task);try{await task}catch(e){warming.delete(model);throw e}
+}
+module.exports = { ensureLocalAI, localStatus, warmLocal };

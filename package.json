@@ -1,13 +1,13 @@
 {
   "name": "doodle-do",
-  "version": "1.2.0",
+  "version": "1.4.0",
   "private": true,
   "description": "Draw questionable ideas. Make your computer do them.",
   "main": "src/main.js",
   "scripts": {
     "start": "electron .",
     "test": "node --test",
-    "check": "node --check src/main.js && node --check src/agent.js && node --check src/local-ai.js && node --check src/preload.js && node --check src/renderer.js",
+    "check": "node --check src/main.js && node --check src/agent.js && node --check src/local-ai.js && node --check src/preload.js && node --check src/renderer.js && node --check src/overlay.js && node --check src/native-host.js && node --check src/gestures.js && node --check src/comedy.js && node --check src/reaction.js",
     "dist": "electron-builder --win portable"
   },
   "devDependencies": {
@@ -23,7 +23,10 @@
     ],
     "win": {
       "target": "portable"
-    }
+    },
+    "asarUnpack": [
+      "src/native-host.ps1"
+    ]
   },
   "overrides": {
     "global-agent": "^4.1.3"
