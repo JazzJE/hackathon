@@ -67,6 +67,8 @@ app.whenReady().then(async () => {
         global.fetch=async(...args)=>{if(failOnce){failOnce=false;return {ok:false,status:503};}return successfulFetch(...args);};
         const recovery=await win.webContents.executeJavaScript(require('node:fs').readFileSync(path.join(__dirname,'../test/fixtures/recovery-smoke.txt'),'utf8'));
         console.log('RECOVERY_SMOKE',JSON.stringify(recovery));
+        global.fetch=async()=>{const text=JSON.stringify({title:'A dinosaur on the internet',explanation:'No matching local app; search for the dinosaur drawing.',confidence:.9,actions:[{type:'search_web',value:'dinosaur'}]});return {ok:true,json:async()=>mockProvider==='gemini'?{candidates:[{finishReason:'STOP',content:{parts:[{text}]}}]}:{output:[{content:[{type:'output_text',text}]}]}};};
+        console.log('WEB_SMOKE',JSON.stringify(await win.webContents.executeJavaScript(require('node:fs').readFileSync(path.join(__dirname,'../test/fixtures/web-smoke.txt'),'utf8'))));
       } finally { global.fetch = originalFetch; settings.providers[mockProvider].key = originalProviderKey; settings.provider = originalProvider; }
       await win.webContents.executeJavaScript('document.activeElement.blur(); window.scrollTo(0,0)');
       await pause(100);

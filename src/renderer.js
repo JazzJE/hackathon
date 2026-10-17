@@ -8,6 +8,7 @@ const actionNames = {close_tab:'Close the current tab',new_tab:'Open a new tab',
 function appName(value) { return info?.apps?.[value]?.name || ({safari:'Safari',chrome:'Google Chrome',firefox:'Firefox',spotify:'Spotify',discord:'Discord',vscode:'Visual Studio Code',vlc:'VLC',notepad:info?.platform === 'darwin' ? 'TextEdit' : 'Notepad',calculator:'Calculator',messages:'Messages',mail:'Mail',notes:'Notes',calendar:'Calendar',reminders:'Reminders',facetime:'FaceTime',paint:'Paint',explorer:info?.platform === 'darwin' ? 'Finder' : 'File Explorer'})[value] || value; }
 function actionLabel(action) {
   if (action.type === 'open_app') return `Open ${appName(action.value)}`;
+  if (action.type === 'search_web') return `Search Google for “${action.value}”`;
   if (action.type === 'open_url') return `Open ${new URL(action.value).hostname}`;
   if (action.type === 'keys') return actionNames[action.value];
   if (action.type === 'click') return 'Click the marked screen target';
@@ -112,7 +113,7 @@ function showPlan(p, origin) {
     const row = document.createElement('li'), num = document.createElement('span'), content = document.createElement('div'), title = document.createElement('strong');
     num.className = 'action-number'; num.textContent = String(i+1).padStart(2,'0'); title.textContent = actionLabel(action);
     content.append(title);
-    if (['shell','open_url','click','trash_files','arrange_app'].includes(action.type)) { const detail = document.createElement('code'); detail.textContent = action.type === 'trash_files' ? JSON.parse(action.value).map(n => `• ${n}`).join('\n') : action.type === 'arrange_app' ? `Position: ${JSON.parse(action.value).x/10}% from left, ${JSON.parse(action.value).y/10}% from top` : action.type === 'click' ? `Target: ${action.value.split(',').map(n => Number(n)/10+'%').join(', ')}` : action.value; content.append(detail); }
+    if (['shell','open_url','search_web','click','trash_files','arrange_app'].includes(action.type)) { const detail = document.createElement('code'); detail.textContent = action.type === 'trash_files' ? JSON.parse(action.value).map(n => `• ${n}`).join('\n') : action.type === 'arrange_app' ? `Position: ${JSON.parse(action.value).x/10}% from left, ${JSON.parse(action.value).y/10}% from top` : action.type === 'click' ? `Target: ${action.value.split(',').map(n => Number(n)/10+'%').join(', ')}` : action.value; content.append(detail); }
     if(['open_app','arrange_app'].includes(action.type)&&info?.apps){
       const label=document.createElement('label'),select=document.createElement('select');
       label.className='app-correction';label.append(document.createTextNode('Choose a different app'));

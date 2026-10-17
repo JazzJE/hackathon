@@ -1,0 +1,10 @@
+(async()=>{
+  const until=async predicate=>{const deadline=Date.now()+7000;while(!predicate()){if(Date.now()>deadline)throw Error('Web fallback timed out');await new Promise(r=>setTimeout(r,25));}};
+  document.getElementById('retryPlan').click();
+  await until(()=>document.getElementById('planTitle').textContent==='A dinosaur on the internet'&&!document.getElementById('execute').disabled);
+  if(!document.getElementById('actions').textContent.includes('Search Google for “dinosaur”'))throw Error('Search query must be readable before running');
+  document.getElementById('execute').click();
+  await until(()=>document.getElementById('planBadge').textContent==='REHEARSAL COMPLETE'&&!document.getElementById('execute').disabled);
+  if(document.getElementById('runCount').textContent!=='0')throw Error('Web rehearsal must not navigate');
+  return {visibleSearchQuery:true,webRehearsal:true,browserOpened:false};
+})()
