@@ -47,7 +47,7 @@ el('overlayDone').onclick = async () => {
   catch (e) { el('overlayStatus').textContent = e.message; sending = false; render(); }
 };
 window.doodle.overlayInfo().then(frame => {
-  el('overlayProvider').textContent = frame.providerName;
+  document.querySelector('.overlay-bar').title += ` · Done sends the captured desktop, drawing, desktop item and app names to ${frame.providerName} for review.`;
   el('desktopImage').src = frame.image;
   pad.width = frame.width; pad.height = frame.height;
   lines=frame.lines || []; el('overlayHint').value=frame.hint || '';
