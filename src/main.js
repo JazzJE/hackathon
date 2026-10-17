@@ -38,7 +38,7 @@ app.whenReady().then(() => {
             return {executed:true,status};
           })()`);
           console.log('EXECUTE_SMOKE',JSON.stringify(execution));
-          console.log(await powershell("if(!(Get-Process -Name Notepad -ErrorAction SilentlyContinue)){throw 'Notepad did not open'}; Write-Output 'Notepad process verified'"));
+          console.log(await powershell("for($i=0;$i -lt 25;$i++){if(Get-Process -Name Notepad -ErrorAction SilentlyContinue){Write-Output 'Notepad process verified';exit 0};Start-Sleep -Milliseconds 200};throw 'Notepad did not open'"));
         }
       }
       if(process.env.DOODLE_SCREENSHOT) require('node:fs').writeFileSync(process.env.DOODLE_SCREENSHOT,(await win.webContents.capturePage()).toPNG());
