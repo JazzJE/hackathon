@@ -10,5 +10,12 @@
   document.getElementById('execute').click();
   await until(()=>document.getElementById('planBadge').textContent==='REHEARSAL COMPLETE' && !document.getElementById('execute').disabled);
   assert(document.getElementById('runCount').textContent==='0','Rehearsal must not execute real window arrangements');
+  const select=document.querySelector('[data-app-select="0"]');
+  select.value='messages';select.dispatchEvent(new Event('change'));
+  await until(()=>document.getElementById('sourceBadge').textContent==='APP CORRECTED BY YOU'&&!document.getElementById('execute').disabled);
+  const corrected=await window.doodle.pendingPlan();
+  assert(JSON.parse(corrected.actions[0].value).app==='messages','Corrected app must reach executable plan');
+  assert(JSON.parse(corrected.actions[0].value).width===500,'Correction must retain window bounds');
+  assert(!document.getElementById('editPlan').hidden&&!document.getElementById('retryPlan').disabled,'Recovery controls should remain available');
   return {doneToInterpretation:true,splitScreenPlan:true,markedReview:true,rehearsal:true,liveApi:false,desktopMutated:false};
 })()

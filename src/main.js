@@ -7,6 +7,9 @@ let overlay = null, capturedFrame = null, pendingFrame = null, openingOverlay = 
 const platform = process.platform;
 const {createSettings,updateSettings,publicSettings} = require('./settings');
 const settings = createSettings(process.env,platform);
+const {correctApp,captureFresh} = require('./plans');
+const {validateLines} = require('./drawing');
+let lastDrawing = null;
 const {discoverInstalledApps,readMacApp,catalogId,publicCatalog} = require('./apps');
 let appCatalog, catalogError = '';
 function currentCatalog() {
@@ -56,6 +59,14 @@ app.whenReady().then(async () => {
         await overlay.webContents.executeJavaScript("document.getElementById('overlayDone').click()");
         const completed = await win.webContents.executeJavaScript(require('node:fs').readFileSync(path.join(__dirname,'../test/fixtures/complete-smoke.txt'),'utf8'));
         console.log('COMPLETE_SMOKE',JSON.stringify({provider:mockProvider,...completed}));
+        await openOverlay(true);
+        const restored=await overlay.webContents.executeJavaScript(`(async()=>{const frame=await window.doodle.overlayInfo();if(frame.lines.length!==3||frame.lines[1].tool!=='circle'||frame.lines[2].tool!=='box'||frame.hint!=='Messages in the left box')throw Error('Edited overlay must restore shapes and hint');return {restoredStrokes:frame.lines.length,hint:true};})()`);
+        console.log('EDIT_SMOKE',JSON.stringify(restored));
+        cancelOverlay();
+        const successfulFetch=global.fetch;let failOnce=true;
+        global.fetch=async(...args)=>{if(failOnce){failOnce=false;return {ok:false,status:503};}return successfulFetch(...args);};
+        const recovery=await win.webContents.executeJavaScript(require('node:fs').readFileSync(path.join(__dirname,'../test/fixtures/recovery-smoke.txt'),'utf8'));
+        console.log('RECOVERY_SMOKE',JSON.stringify(recovery));
       } finally { global.fetch = originalFetch; settings.providers[mockProvider].key = originalProviderKey; settings.provider = originalProvider; }
       await win.webContents.executeJavaScript('document.activeElement.blur(); window.scrollTo(0,0)');
       await pause(100);
@@ -66,8 +77,20 @@ app.whenReady().then(async () => {
 });
 function stop() { if (overlay) cancelOverlay(); stopped = true; pending = null; controller?.abort(); terminate(active); }
 function available() { if (busy || openingOverlay || overlay) throw Error('Finish or stop the current request first.'); }
-function info() { return {platform,...publicSettings(settings),apps:publicCatalog(appCatalog),catalogError,shortcutAvailable,overlayHotkeyAvailable}; }
+function info() { return {platform,...publicSettings(settings),apps:publicCatalog(appCatalog),catalogError,permissions:platform==='darwin'?{screen:systemPreferences.getMediaAccessStatus('screen'),accessibility:systemPreferences.isTrustedAccessibilityClient(false)}:null,shortcutAvailable,overlayHotkeyAvailable}; }
 ipcMain.handle('info', info);
+ipcMain.handle('pending-plan',()=>pending);
+ipcMain.handle('correct-app',(_,args={})=>{
+  available();
+  if(!pending)throw Error('Interpret the drawing again before changing its app.');
+  pending=correctApp(pending,args.index,args.appId,platform,currentCatalog());
+  return pending;
+});
+ipcMain.handle('open-permission',(_,kind)=>{
+  const urls={screen:'x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture',accessibility:'x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility'};
+  if(platform!=='darwin'||!Object.hasOwn(urls,kind))throw Error('This permission panel is only available on macOS.');
+  return shell.openExternal(urls[kind]);
+});
 ipcMain.handle('refresh-apps',async () => {
   available(); busy = true;
   try { appCatalog = await discoverInstalledApps(platform); catalogError = ''; pending = null; pendingFrame = null; return info(); }
@@ -101,12 +124,19 @@ ipcMain.handle('settings', (_, args = {}) => {
 ipcMain.handle('invalidate', () => { pending = null; pendingFrame = null; });
 ipcMain.handle('interpret', async (_, args = {}) => {
   available();
-  const frame = args.overlay === true ? capturedFrame : null; capturedFrame = null; pendingFrame = null;
-  if (args.overlay === true && !frame) throw Error('Open the desktop canvas and draw again.');
+  const previous=args.retry===true?lastDrawing:null;
+  if(args.retry===true&&!previous)throw Error('Draw something before retrying.');
+  const frame=previous?previous.frame:args.overlay===true?capturedFrame:null;
+  if((args.overlay===true||previous?.frame)&&!frame)throw Error('Open the desktop canvas and draw again.');
+  if(frame)captureFresh(frame,screen.getAllDisplays());
+  const image=previous?previous.image:args.image;
+  const hint=previous?previous.hint:frame?.hint || args.hint;
+  capturedFrame=null;pendingFrame=null;
+  lastDrawing={image,hint,frame};
   busy = true; stopped = false; pending = null; controller = new AbortController();
   try {
     const startedAt = performance.now();
-    const plan = await interpret({image:args.image,hint:args.hint,key:settings.key,model:settings.model,provider:settings.provider,allowShell:!frame && settings.shell,platform,signal:controller.signal,desktop:frame ? {image:frame.image,names:[...frame.inventory.keys()]} : undefined,appCatalog:currentCatalog()});
+    const plan = await interpret({image,hint,key:settings.key,model:settings.model,provider:settings.provider,allowShell:!frame && settings.shell,platform,signal:controller.signal,desktop:frame ? {image:frame.image,names:[...frame.inventory.keys()]} : undefined,appCatalog:currentCatalog()});
     if (stopped) throw Error('Interpretation cancelled. Your drawing is still here.');
     pending = plan; pendingFrame = frame;
     return {...plan,interpretationMs:Math.round(performance.now()-startedAt)};
@@ -137,11 +167,12 @@ ipcMain.handle('execute', async (_, options = {}) => {
   if (plan.actions.some(a => ['click','trash_files','arrange_app'].includes(a.type)) && !frame) throw Error('This plan needs a fresh desktop capture.');
   const rehearsal = options.rehearsal !== false;
   if (!rehearsal && frame) {
-    const display = screen.getAllDisplays().find(d => d.id === frame.displayId);
-    if (Date.now()-frame.createdAt > 120000 || !display || ['x','y','width','height'].some(k => display.bounds[k] !== frame.bounds[k])) throw Error('The desktop capture expired or the display changed. Draw over the desktop again.');
+    captureFresh(frame,screen.getAllDisplays());
   }
   if (!rehearsal && !['win32','darwin'].includes(platform)) throw Error('Real actions require Windows or macOS.');
   if (!rehearsal && plan.actions.some(a => a.type === 'shell') && !settings.shell) throw Error('Enable full computer control and interpret again.');
+  if(!rehearsal&&platform==='darwin'&&plan.actions.some(a=>a.type==='click'||a.type==='arrange_app'||(a.type==='keys'&&!['volume_up','volume_down','mute'].includes(a.value)))&&!systemPreferences.isTrustedAccessibilityClient(false))throw Error('Enable Accessibility for Doodle Do / Electron or its launcher (ChatGPT or Terminal) in System Settings. Your plan is preserved.');
+  if(!rehearsal)lastDrawing=null;
   pending = null; pendingFrame = null; busy = true; stopped = false;
   const results = [];
   try {
@@ -179,13 +210,18 @@ ipcMain.handle('execute', async (_, options = {}) => {
   }
 });
 // One display per capture: coordinates stay tied to its bounds, including negative origins.
-async function openOverlay() {
+async function openOverlay(reuse=false) {
   available();
   if (!['darwin','win32'].includes(platform)) throw Error('The desktop canvas supports Windows and macOS.');
   openingOverlay = true; overlaySubmitted = false; pending = null; pendingFrame = null; capturedFrame = null;
   try {
-    const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
-    if (process.env.DOODLE_SMOKE !== '1' && platform === 'darwin' && systemPreferences.getMediaAccessStatus('screen') === 'denied') throw Error('Enable Screen Recording for Doodle Do / Electron in System Settings → Privacy & Security, then restart the app.');
+    const previous=reuse===true?lastDrawing?.frame:null;
+    if(reuse===true&&!previous)throw Error('Open a fresh desktop canvas to draw.');
+    if(previous)captureFresh(previous,screen.getAllDisplays());
+    const display=previous?screen.getAllDisplays().find(d=>d.id===previous.displayId):screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+    if(previous){capturedFrame={...previous};win.hide();}
+    else {
+    if (process.env.DOODLE_SMOKE !== '1' && platform === 'darwin' && systemPreferences.getMediaAccessStatus('screen') === 'denied') throw Error('Enable Screen Recording for Doodle Do / Electron or its launcher (ChatGPT or Terminal) in System Settings → Privacy & Security, then restart the app.');
     let image;
     if (process.env.DOODLE_SMOKE === '1') image = await win.webContents.capturePage();
     win.hide(); await pause(250);
@@ -198,6 +234,7 @@ async function openOverlay() {
     }
     const size = image.getSize(), directory = app.getPath('desktop');
     capturedFrame = {image:`data:image/jpeg;base64,${image.toJPEG(85).toString('base64')}`,width:size.width,height:size.height,bounds:{...display.bounds},workArea:{...display.workArea},displayId:display.id,createdAt:Date.now(),directory,inventory:process.env.DOODLE_SMOKE === '1' ? new Map() : await desktopInventory(directory)};
+    }
     overlay = new BrowserWindow({...display.bounds,frame:false,transparent:true,resizable:false,movable:false,hasShadow:false,alwaysOnTop:true,skipTaskbar:true,show:false,enableLargerThanScreen:true,webPreferences:{preload:path.join(__dirname,'preload.js'),contextIsolation:true,nodeIntegration:false,sandbox:true}});
     overlay.setAlwaysOnTop(true,'screen-saver');
     overlay.setVisibleOnAllWorkspaces(true,{visibleOnFullScreen:true});
@@ -223,19 +260,22 @@ function cancelOverlay() {
 function requireOverlay(event) {
   if (!overlay || event.sender.id !== overlay.webContents.id) throw Error('This request must come from the desktop canvas.');
 }
-ipcMain.handle('open-overlay',openOverlay);
+ipcMain.handle('open-overlay',()=>openOverlay());
+ipcMain.handle('edit-overlay',()=>openOverlay(true));
 ipcMain.handle('overlay-info',event => {
   requireOverlay(event);
   if (!capturedFrame) throw Error('Capture expired.');
-  return {image:capturedFrame.image,width:capturedFrame.width,height:capturedFrame.height,providerName:PROVIDERS[settings.provider].name};
+  return {image:capturedFrame.image,width:capturedFrame.width,height:capturedFrame.height,providerName:PROVIDERS[settings.provider].name,lines:capturedFrame.lines || [],hint:capturedFrame.hint || ''};
 });
 ipcMain.handle('cancel-overlay',event => { requireOverlay(event); cancelOverlay(); });
 ipcMain.handle('complete-overlay',(event,args = {}) => {
   requireOverlay(event);
   if (!capturedFrame || typeof args.image !== 'string' || !args.image.startsWith('data:image/png;base64,') || args.image.length > 8000000) throw Error('Invalid desktop drawing.');
+  capturedFrame.lines=validateLines(args.lines || [],capturedFrame.width,capturedFrame.height);
+  capturedFrame.hint=String(args.hint || '').slice(0,300);
   const preview = capturedFrame.image;
   overlaySubmitted = true; overlay.close(); win.show(); win.focus();
-  win.webContents.send('overlay-drawing',{image:args.image,preview});
+  win.webContents.send('overlay-drawing',{image:args.image,preview,hint:capturedFrame.hint});
 });
 ipcMain.handle('stop', stop);
 app.on('window-all-closed', () => app.quit());

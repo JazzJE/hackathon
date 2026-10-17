@@ -1,5 +1,9 @@
 const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('doodle', {
+  pendingPlan: () => ipcRenderer.invoke('pending-plan'),
+  correctApp: args => ipcRenderer.invoke('correct-app',args),
+  editOverlay: () => ipcRenderer.invoke('edit-overlay'),
+  openPermission: kind => ipcRenderer.invoke('open-permission',kind),
   openOverlay: () => ipcRenderer.invoke('open-overlay'),
   overlayInfo: () => ipcRenderer.invoke('overlay-info'),
   cancelOverlay: () => ipcRenderer.invoke('cancel-overlay'),

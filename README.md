@@ -65,6 +65,10 @@ Built-in actions open catalog apps and HTTP/HTTPS URLs, send known shortcuts, ta
 
 Gemini 3 requests use low reasoning effort for quicker recognition. The waiting view displays elapsed seconds and a Stop option; the inspector reports the measured interpretation time. Provider load can still cause delays.
 
+Use **Circle** to select an icon and **Box** to draw window regions; both support reverse-direction drags, undo and redo. Add an optional hint directly in the overlay. After interpretation, **Choose a different app** corrects a launch or layout instantly, retaining its drawn position and size without another AI call. **Edit marks** restores your strokes and hint on the captured desktop; **Try again** retries the same drawing after an API error. Desktop captures still expire after two minutes, so open a fresh canvas if the display or windows have changed.
+
+On macOS, Settings shows current Screen Recording and Accessibility status with buttons to open the matching system panels. Development launches can inherit permissions from their launcher, such as ChatGPT or Terminal. Missing Accessibility access preserves the reviewed plan so you can retry after enabling it.
+
 Windows-only, opt-in settings retain the original prototype’s **Install missing apps** through exact Winget IDs and **Full computer control** for AI-written PowerShell. Custom scripts are disabled for desktop-overlay interpretation; overlay actions use the typed built-in commands. Inspect scripts before running them. Installing a missing app can require interaction; launch it again after installation completes.
 
 **Stop** or **⌘/Ctrl Alt Backspace** cancels recognition, terminates the running command tree, and prevents later steps. It cannot undo completed actions or an already detached app launch. A Trash operation already in progress may finish before stopping; subsequent items are skipped. Commands time out after three minutes. Global shortcut availability is shown in the interface.

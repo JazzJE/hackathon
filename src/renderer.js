@@ -1,6 +1,7 @@
 const $ = id => document.getElementById(id);
 const canvas = $('canvas'), ctx = canvas.getContext('2d');
 let strokes = [], future = [], current = null, pointer = null, erasing = false, ink = '#293b50';
+let lastRequest = null;
 let busy = false, plan = null, source = '', guesses = 0, runs = 0, gallery = [], info = null;
 let challengeTimer = null, challengeReady = false, seconds = 30;
 const actionNames = {close_tab:'Close the current tab',new_tab:'Open a new tab',undo:'Undo',redo:'Redo',save:'Save',copy:'Copy',paste:'Paste',select_all:'Select all',switch_window:'Switch windows',show_desktop:'Show the desktop',volume_up:'Turn volume up',volume_down:'Turn volume down',mute:'Toggle mute'};
@@ -32,6 +33,9 @@ function redraw() {
 }
 function syncControls() {
   $('interpret').disabled = busy || !strokes.length;
+  $('planRecovery').hidden = !lastRequest; $('retryPlan').disabled = busy || !lastRequest;
+  $('editPlan').hidden = !lastRequest?.overlay; $('editPlan').disabled = busy;
+  document.querySelectorAll('[data-app-select]').forEach(select=>select.disabled=busy||!plan);
   $('execute').disabled = busy || !plan || plan.confidence < .65 || !plan.actions.length;
   $('undo').disabled = busy || !strokes.length;
   $('redo').disabled = busy || !future.length;
@@ -41,7 +45,8 @@ function syncControls() {
   document.querySelectorAll('[data-demo], [data-color], .gallery-item').forEach(b => b.disabled = busy);
   canvas.setAttribute('aria-disabled', String(busy));
 }
-function invalidate() {
+function invalidate(keepRetry=false) {
+  if(!keepRetry)lastRequest=null;
   const hadPlan = !!plan;
   plan = null;
   $('desktopPreview').hidden = true; $('backToSketchpad').hidden = true; $('desktopPreviewBackground').removeAttribute('src'); $('desktopPreviewSketch').removeAttribute('src');
@@ -86,7 +91,7 @@ document.querySelectorAll('[data-color]').forEach(button => button.onclick = () 
 $('undo').onclick = () => { if (busy || !strokes.length) return; current = null; future.push(strokes.pop()); invalidate(); redraw(); };
 $('redo').onclick = () => { if (busy || current || !future.length) return; current = null; strokes.push(future.pop()); invalidate(); redraw(); };
 $('clear').onclick = () => { if (busy) return; current = null; strokes = []; future = []; invalidate(); redraw(); };
-$('hint').oninput = invalidate;
+$('hint').oninput = () => invalidate();
 document.addEventListener('keydown', event => {
   if (busy || $('settings').open || event.target.matches('input,textarea,button')) return;
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'z') { event.preventDefault(); $(event.shiftKey ? 'redo' : 'undo').click(); }
@@ -100,7 +105,7 @@ function showPlan(p, origin) {
   $('planCard').dataset.state = p.confidence >= .65 && p.actions.length ? 'ready' : 'unclear';
   $('planBadge').textContent = p.confidence >= .65 && p.actions.length ? 'GUESS READY' : 'NEEDS A CLUE';
   $('planTitle').textContent = p.title; $('explanation').textContent = p.explanation;
-  $('planMeta').hidden = false; $('sourceBadge').textContent = origin === 'demo' ? 'PRESET DEMO' : origin === 'desktop' ? 'DESKTOP + AI' : 'AI INTERPRETATION';
+  $('planMeta').hidden = false; $('sourceBadge').textContent = p.correctedByUser ? 'APP CORRECTED BY YOU' : origin === 'demo' ? 'PRESET DEMO' : origin === 'desktop' ? 'DESKTOP + AI' : 'AI INTERPRETATION';
   $('confidence').textContent = `${Math.round(p.confidence*100)}% confident${Number.isFinite(p.interpretationMs) ? ` · ${(p.interpretationMs/1000).toFixed(1)}s` : ''}`;
   $('actions').replaceChildren();
   p.actions.forEach((action,i) => {
@@ -108,6 +113,23 @@ function showPlan(p, origin) {
     num.className = 'action-number'; num.textContent = String(i+1).padStart(2,'0'); title.textContent = actionLabel(action);
     content.append(title);
     if (['shell','open_url','click','trash_files','arrange_app'].includes(action.type)) { const detail = document.createElement('code'); detail.textContent = action.type === 'trash_files' ? JSON.parse(action.value).map(n => `• ${n}`).join('\n') : action.type === 'arrange_app' ? `Position: ${JSON.parse(action.value).x/10}% from left, ${JSON.parse(action.value).y/10}% from top` : action.type === 'click' ? `Target: ${action.value.split(',').map(n => Number(n)/10+'%').join(', ')}` : action.value; content.append(detail); }
+    if(['open_app','arrange_app'].includes(action.type)&&info?.apps){
+      const label=document.createElement('label'),select=document.createElement('select');
+      label.className='app-correction';label.append(document.createTextNode('Choose a different app'));
+      select.dataset.appSelect=String(i);select.setAttribute('aria-label',`App for step ${i+1}`);
+      const selected=action.type==='open_app'?action.value:JSON.parse(action.value).app;
+      Object.entries(info.apps).sort((a,b)=>a[1].name.localeCompare(b[1].name)).forEach(([id,entry])=>{
+        const option=document.createElement('option');option.value=id;option.textContent=entry.name;option.selected=id===selected;select.append(option);
+      });
+      select.onchange=()=>work(async()=>{
+        let updated;
+        try{updated=await window.doodle.correctApp({index:i,appId:select.value});}
+        catch(error){select.value=selected;throw error;}
+        showPlan(updated,source);markTargets(updated.actions);
+        status('App corrected instantly. Review the plan, then run it.');
+      },'ready');
+      label.append(select);content.append(label);
+    }
     row.append(num,content); $('actions').append(row);
   });
   $('targetNote').hidden = origin !== 'desktop' && !p.actions.some(a => a.type === 'keys');
@@ -164,7 +186,7 @@ async function requestInterpretation(args) {
 $('interpret').onclick = () => work(async () => {
   const pixels = ctx.getImageData(0,0,canvas.width,canvas.height).data;
   if (!pixels.some((v,i) => i%4 === 3 && v > 0)) throw Error('A blank canvas is a bold statement. Add a little ink first.');
-  invalidate(); $('planCard').dataset.state = 'thinking'; $('planBadge').textContent = 'READING THE ROOM'; $('planTitle').textContent = 'Connecting the questionable dots…';
+  invalidate(); lastRequest={overlay:false}; syncControls(); $('planCard').dataset.state = 'thinking'; $('planBadge').textContent = 'READING THE ROOM'; $('planTitle').textContent = 'Connecting the questionable dots…';
   $('interpret').textContent = 'Deciphering…';
   const p = await requestInterpretation({image:snapshot().toDataURL('image/png'),hint:$('hint').value});
   showPlan(p,'ai'); guesses++; $('guessCount').textContent = guesses; remember(p,'ai');
@@ -184,7 +206,10 @@ $('execute').onclick = () => work(async () => {
   status($('rehearsal').checked ? 'Playing through the plan. No desktop actions…' : 'The sketchpad will minimize while your plan runs…');
   const reviewedPlan = plan;
   plan = null;
-  const result = await window.doodle.execute({rehearsal:$('rehearsal').checked});
+  let result;
+  try{result=await window.doodle.execute({rehearsal:$('rehearsal').checked});}
+  catch(error){const retained=await window.doodle.pendingPlan();if(retained)showPlan(retained,source);else lastRequest=null;throw error;}
+  if(!result.rehearsal)lastRequest=null;
   if (result.rehearsal) plan = reviewedPlan;
   $('planCard').dataset.state = 'success'; $('planBadge').textContent = result.rehearsal ? 'REHEARSAL COMPLETE' : 'ART HAS CONSEQUENCES';
   $('actions').querySelectorAll('li').forEach(row => row.classList.add('done'));
@@ -239,12 +264,20 @@ function applyInfo(state) {
   $('model').value = state.model; $('shell').checked = state.shell; $('install').checked = state.install;
   refreshProvider();
   $('appCatalogStatus').textContent = state.catalogError || `${Object.keys(state.apps || {}).length} installed apps available. Add apps from other folders below.`;
+  renderPermissions(state);
   $('windowsOptions').hidden = state.platform !== 'win32'; $('macHelp').hidden = state.platform !== 'darwin';
   $('platformLabel').textContent = `${state.platform === 'darwin' ? 'MACOS' : state.platform === 'win32' ? 'WINDOWS' : 'REHEARSAL'} EDITION / 02`;
   $('noteLabel').textContent = `A little page → ${appName('notepad')}`;
   $('compassLabel').textContent = state.platform === 'darwin' ? 'A compass → Safari' : 'A compass → your browser';
   $('stopShortcut').textContent = state.shortcutAvailable ? `· ${state.platform === 'darwin' ? '⌘ Option' : 'Ctrl Alt'} Backspace` : '· global shortcut unavailable';
 }
+function renderPermissions(state){
+  $('permissionSetup').hidden=!state.permissions;
+  if(state.permissions)$('permissionStatus').textContent=`Screen Recording: ${state.permissions.screen} · Accessibility: ${state.permissions.accessibility?'enabled':'needs access'}`;
+}
+$('screenPermission').onclick=()=>window.doodle.openPermission('screen').catch(e=>$('settingsStatus').textContent=e.message);
+$('accessibilityPermission').onclick=()=>window.doodle.openPermission('accessibility').catch(e=>$('settingsStatus').textContent=e.message);
+$('refreshPermissions').onclick=async()=>{try{const state=await window.doodle.info();info={...info,permissions:state.permissions};renderPermissions(state);}catch(e){$('settingsStatus').textContent=e.message;}};
 function refreshProvider() {
   const gemini = $('provider').value === 'gemini';
   const current = info?.providers?.[$('provider').value];
@@ -282,7 +315,7 @@ $('settingsForm').onsubmit = async event => {
   event.preventDefault();
   try {
     applyInfo(await window.doodle.settings({provider:$('provider').value,key:$('key').value,model:$('model').value,shell:$('shell').checked,install:$('install').checked}));
-    $('key').value = ''; invalidate(); $('settings').close(); status(info.hasKey ? 'All set. Draw something only you understand.' : 'Demo mode is ready. Add a key anytime for your own drawings.');
+    $('key').value = ''; invalidate(true); $('settings').close(); status(info.hasKey ? 'All set. Draw something only you understand.' : 'Demo mode is ready. Add a key anytime for your own drawings.');
   } catch(e) { $('settingsStatus').textContent = e.message; }
 };
 $('forgetKey').onclick = async () => {
@@ -314,19 +347,36 @@ function markTargets(actions) {
     if (shape) svg.append(shape);
   }
 }
-window.doodle.onOverlayDrawing(args => work(async () => {
-  invalidate(); strokes = []; future = []; redraw();
-  $('planCard').dataset.state = 'thinking'; $('planBadge').textContent = 'READING YOUR DESKTOP';
-  $('planTitle').textContent = 'A desktop with directions.';
-  $('explanation').textContent = 'Matching your marks to the things underneath them…';
-  $('desktopPreviewBackground').src = args.preview; $('desktopPreviewSketch').src = args.image; $('desktopPreview').hidden = false;
+function displayDesktop(args){
+  $('desktopPreviewBackground').src=args.preview;$('desktopPreviewSketch').src=args.image;$('desktopPreview').hidden=false;
+  $('backToSketchpad').hidden=false;
+  $('captureBackground').src=args.preview;$('captureSketch').src=args.image;
+}
+async function interpretDesktop(args,retry=false){
+  invalidate();lastRequest={...args,overlay:true};strokes=[];future=[];redraw();
+  displayDesktop(args);
+  $('planCard').dataset.state='thinking';$('planBadge').textContent='READING YOUR DESKTOP';
+  $('planTitle').textContent='A desktop with directions.';
+  $('explanation').textContent='Matching your marks to the things underneath them…';
   $('planCard').scrollIntoView({block:'nearest'});
-  const p = await requestInterpretation({image:args.image,overlay:true});
-  showPlan(p,'desktop'); guesses++; $('guessCount').textContent = guesses;
-  $('desktopPreviewBackground').src = args.preview; $('desktopPreviewSketch').src = args.image; $('desktopPreview').hidden = false; $('backToSketchpad').hidden = false;
-  $('captureBackground').src = args.preview; $('captureSketch').src = args.image; markTargets(p.actions); $('reviewCapture').hidden = false;
-  $('planCard').scrollIntoView({block:'nearest'});
-  status(p.confidence < .65 || !p.actions.length ? 'The target needs a clearer mark. Open the desktop canvas to try again.' : 'Review the marked desktop and every action. Rehearse first, or turn rehearsal off to run.');
-},'thinking'));
+  const p=await requestInterpretation(retry?{retry:true,overlay:true}:{image:args.image,hint:args.hint,overlay:true});
+  showPlan(p,'desktop');guesses++;$('guessCount').textContent=guesses;
+  displayDesktop(args);$('backToSketchpad').hidden=false;markTargets(p.actions);$('reviewCapture').hidden=false;
+  status(p.confidence<.65||!p.actions.length?'Add a hint or edit your marks, then try again.':'Check the selected apps and regions. You can correct an app below without another AI request.');
+}
+window.doodle.onOverlayDrawing(args=>work(()=>interpretDesktop(args),'thinking'));
+$('retryPlan').onclick=()=>{
+  if(busy||!lastRequest)return;
+  const previous={...lastRequest};
+  work(async()=>{
+    if(previous.overlay)await interpretDesktop(previous,true);
+    else{invalidate(true);$('planBadge').textContent='READING THE ROOM';const p=await requestInterpretation({retry:true});showPlan(p,'ai');guesses++;$('guessCount').textContent=guesses;remember(p,'ai');status('Fresh interpretation ready. Review the actions.');}
+  },'thinking');
+};
+$('editPlan').onclick=async()=>{
+  if(busy)return;
+  try{invalidate(true);await window.doodle.editOverlay();}
+  catch(e){status(e.message.replace(/^Error invoking remote method '[^']+': Error: /,''),true);}
+};
 window.doodle.info().then(applyInfo).catch(e => status(e.message,true));
 redraw(); updateMode();

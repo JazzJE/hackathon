@@ -10,11 +10,19 @@
   assert(!document.getElementById('overlayDone').disabled,'Drawing must enable Done');
   document.getElementById('overlayUndo').click();
   assert(document.getElementById('overlayDone').disabled,'Undo should remove drawing');
+  document.dispatchEvent(new KeyboardEvent('keydown',{key:'Z',ctrlKey:true,shiftKey:true,bubbles:true}));
+  assert(!document.getElementById('overlayDone').disabled,'Redo should restore drawing');
   document.dispatchEvent(new KeyboardEvent('keydown',{key:'Tab',bubbles:true}));
   assert(document.body.classList.contains('controls-hidden'),'Tab should hide covering controls');
   document.dispatchEvent(new KeyboardEvent('keydown',{key:'Tab',bubbles:true}));
   assert(!document.body.classList.contains('controls-hidden'),'Tab should restore controls');
-  c.dispatchEvent(event('pointerdown',400,300));c.dispatchEvent(event('pointermove',450,260));c.dispatchEvent(event('pointerup',450,260));
+  for(const [tool,x] of [['overlayCircle',400],['overlayBox',600]]){
+    document.getElementById(tool).click();
+    c.dispatchEvent(event('pointerdown',x,300));c.dispatchEvent(event('pointermove',x+50,260));c.dispatchEvent(event('pointerup',x+50,260));
+    const bounds=c.getBoundingClientRect(),px=Math.round((x+25-bounds.left)*c.width/bounds.width),py=Math.round((260-bounds.top)*c.height/bounds.height);
+    assert(c.getContext('2d').getImageData(px-2,py-2,5,5).data.some((v,i)=>i%4===3&&v>0),'Shape outline should render');
+  }
+  document.getElementById('overlayHint').value='Messages in the left box';
   c.setPointerCapture=capture;
   // Captures only the app's fixture image, never the user's actual desktop.
   return {overlay:true,drawing:true,undo:true,hideTools:true,completeButton:true,width:c.width,height:c.height};

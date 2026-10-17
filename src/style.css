@@ -1214,3 +1214,5 @@ dialog .primary {
 .app-library { margin:16px 0; padding:12px; border:1px solid #d9dfce; border-radius:7px; }
 .app-library strong { font-size:11px; }
 .app-library>div { display:flex; gap:18px; }
+
+.plan-recovery{display:flex;gap:7px;margin:12px 0}.plan-recovery button{font-size:9px;padding:9px 7px;flex:1;background:#f7f8f1;border-color:#ccd7bd}.app-correction{display:block;font-size:8px;color:#7f8b73;margin-top:9px}.app-correction select{display:block;width:100%;max-width:240px;margin-top:5px;padding:7px;border:1px solid #cbd5bf;border-radius:5px;color:#293b50;background:#f8faf3;font:10px Arial}.actions li>div{min-width:0;flex:1}.permission-setup{padding:12px;background:#edf1e4;border:1px solid #d4ddc7;border-radius:7px;margin:16px 0}.permission-setup strong{font-size:11px}.permission-setup>div{display:flex;flex-wrap:wrap;gap:12px}

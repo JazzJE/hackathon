@@ -217,3 +217,5 @@ kbd {
 .controls-hidden .hidden-hint {
   display:block
 }
+
+.overlay-hint{position:absolute;z-index:2;bottom:154px;left:50%;transform:translateX(-50%);width:460px;max-width:85vw;background:#fffefaf2;border:1px solid #dce0d2;border-radius:10px;padding:10px 14px;box-shadow:0 4px 24px #293b501a}.overlay-hint span{font-size:8px;letter-spacing:1px;text-transform:uppercase;color:#879776;display:block;margin-bottom:5px}.overlay-hint input{width:100%;font:12px Arial;border:0;background:transparent;color:#293b50;padding:5px 0}.controls-hidden .overlay-hint{display:none}@media(max-width:1200px){.overlay-brand span{display:none}.overlay-tools button{font-size:10px;padding:9px 7px}.overlay-bar{gap:8px}.overlay-tools input{width:42px}}

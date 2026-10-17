@@ -1,0 +1,11 @@
+(async()=>{
+  const assert=(v,m)=>{if(!v)throw Error(m)};
+  const until=async predicate=>{const deadline=Date.now()+7000;while(!predicate()){if(Date.now()>deadline)throw Error('Recovery timed out: '+document.getElementById('status').textContent);await new Promise(r=>setTimeout(r,25));}};
+  document.getElementById('retryPlan').click();
+  await until(()=>document.getElementById('status').textContent.includes('503')&&!document.getElementById('retryPlan').disabled);
+  assert(!document.getElementById('desktopPreview').hidden,'Failed request should preserve drawing preview');
+  document.getElementById('retryPlan').click();
+  await until(()=>document.getElementById('planTitle').textContent==='Split screen, drawn by hand'&&!document.getElementById('execute').disabled);
+  assert((await window.doodle.pendingPlan()).actions.length===2,'Retry should create a new executable plan');
+  return {apiFailureRetainsDrawing:true,retry:true,desktopMutated:false};
+})()
