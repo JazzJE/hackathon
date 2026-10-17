@@ -16,12 +16,16 @@
   assert(document.body.classList.contains('controls-hidden'),'Tab should hide covering controls');
   document.dispatchEvent(new KeyboardEvent('keydown',{key:'Tab',bubbles:true}));
   assert(!document.body.classList.contains('controls-hidden'),'Tab should restore controls');
-  for(const [tool,x] of [['overlayCircle',400],['overlayBox',600]]){
+  for(const [tool,x,key,rgb] of [['overlayCircle',400,'2',[35,133,239]],['overlayBox',600,'4',[174,101,235]]]){
+    document.dispatchEvent(new KeyboardEvent('keydown',{key,bubbles:true}));
     document.getElementById(tool).click();
     c.dispatchEvent(event('pointerdown',x,300));c.dispatchEvent(event('pointermove',x+50,260));c.dispatchEvent(event('pointerup',x+50,260));
     const bounds=c.getBoundingClientRect(),px=Math.round((x+25-bounds.left)*c.width/bounds.width),py=Math.round((260-bounds.top)*c.height/bounds.height);
-    assert(c.getContext('2d').getImageData(px-2,py-2,5,5).data.some((v,i)=>i%4===3&&v>0),'Shape outline should render');
+    const pixels=c.getContext('2d').getImageData(px-2,py-2,5,5).data;
+    assert(pixels.some((v,i)=>i%4===3&&v>200&&rgb.every((channel,j)=>Math.abs(pixels[i-3+j]-channel)<3)),'Each shape must retain its chosen ink color');
   }
+  document.getElementById('overlayUndo').click();
+  document.dispatchEvent(new KeyboardEvent('keydown',{key:'Z',ctrlKey:true,shiftKey:true,bubbles:true}));
   document.getElementById('overlayHint').value='Messages in the left box';
   c.setPointerCapture=capture;
   // Captures only the app's fixture image, never the user's actual desktop.

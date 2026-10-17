@@ -20,3 +20,8 @@ test('saved drawings reject excessive strokes and point counts',()=>{
   assert.throws(()=>validateLines(Array(1001).fill(line),100,100));
   assert.throws(()=>validateLines([{...line,points:Array(80001).fill([0,0])}],100,100));
 });
+test('stroke colors survive saving and reject non-hex paint values',()=>{
+  const line={tool:'box',size:5,points:[[0,0],[50,50]],color:'#2385ef'};
+  assert.equal(validateLines([line],100,100)[0].color,'#2385ef');
+  for(const color of ['red','#123','url(https://example.com)',null,123])assert.throws(()=>validateLines([{...line,color}],100,100));
+});

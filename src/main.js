@@ -60,7 +60,7 @@ app.whenReady().then(async () => {
         const completed = await win.webContents.executeJavaScript(require('node:fs').readFileSync(path.join(__dirname,'../test/fixtures/complete-smoke.txt'),'utf8'));
         console.log('COMPLETE_SMOKE',JSON.stringify({provider:mockProvider,...completed}));
         await openOverlay(true);
-        const restored=await overlay.webContents.executeJavaScript(`(async()=>{const frame=await window.doodle.overlayInfo();if(frame.lines.length!==3||frame.lines[1].tool!=='circle'||frame.lines[2].tool!=='box'||frame.hint!=='Messages in the left box')throw Error('Edited overlay must restore shapes and hint');return {restoredStrokes:frame.lines.length,hint:true};})()`);
+        const restored=await overlay.webContents.executeJavaScript(`(async()=>{const frame=await window.doodle.overlayInfo();if(frame.lines.length!==3||frame.lines[1].tool!=='circle'||frame.lines[2].tool!=='box'||frame.lines[1].color!=='#2385ef'||frame.lines[2].color!=='#ae65eb'||frame.hint!=='Messages in the left box')throw Error('Edited overlay must restore shapes and hint');return {restoredStrokes:frame.lines.length,hint:true};})()`);
         console.log('EDIT_SMOKE',JSON.stringify(restored));
         cancelOverlay();
         const successfulFetch=global.fetch;let failOnce=true;

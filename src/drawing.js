@@ -7,6 +7,7 @@
     let total=0;
     return lines.map(line=>{
       if(!line||!['pen','circle','box','eraser'].includes(line.tool)||!Number.isFinite(line.size)||line.size<.5||line.size>200||!Array.isArray(line.points)||!line.points.length)throw Error('Invalid drawing stroke.');
+      if(line.color!==undefined && (typeof line.color!=='string'||!/^#[0-9a-fA-F]{6}$/.test(line.color)))throw Error('Invalid ink color.');
       total+=line.points.length;
       if(total>80000)throw Error('This drawing has too many points. Undo a few strokes.');
       const points=line.points.map(point=>{
@@ -14,14 +15,14 @@
         return [...point];
       });
       if(['circle','box'].includes(line.tool)&&points.length!==2)throw Error('Invalid shape.');
-      return {tool:line.tool,size:line.size,points};
+      return {tool:line.tool,size:line.size,points,...(line.color!==undefined?{color:line.color}:{})};
     });
   }
   function paint(context,lines,width,height) {
     context.clearRect(0,0,width,height);
     for(const line of lines){
       context.globalCompositeOperation=line.tool==='eraser'?'destination-out':'source-over';
-      context.beginPath();context.strokeStyle='#e14f35';context.fillStyle='#e14f35';context.lineWidth=line.size;context.lineJoin='round';context.lineCap='round';
+      context.beginPath();context.strokeStyle=line.color||'#e14f35';context.fillStyle=line.color||'#e14f35';context.lineWidth=line.size;context.lineJoin='round';context.lineCap='round';
       if(line.tool==='circle'||line.tool==='box'){
         const [a,b]=line.points,x=Math.min(a[0],b[0]),y=Math.min(a[1],b[1]),w=Math.abs(a[0]-b[0]),h=Math.abs(a[1]-b[1]);
         if(line.tool==='box')context.rect(x,y,w,h);

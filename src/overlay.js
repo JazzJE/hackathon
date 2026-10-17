@@ -1,19 +1,20 @@
 const el = id => document.getElementById(id);
 const pad = el('overlayCanvas'), context = pad.getContext('2d');
-let lines = [], future = [], activeLine = null, activePointer = null, selectedTool = 'pen', sending = false;
+let lines = [], future = [], activeLine = null, activePointer = null, selectedTool = 'pen', selectedInk = '#e14f35', sending = false;
 function render() {
   window.doodleDrawing.paint(context,lines,pad.width,pad.height);
   el('overlayDone').disabled = sending || !lines.some(line => line.tool !== 'eraser');
   el('overlayUndo').disabled = sending || !lines.length;
   el('overlayClear').disabled = sending || !lines.length;
   el('overlayHint').disabled = sending;
+  document.querySelectorAll('[data-overlay-color]').forEach(button=>button.disabled=sending);
 }
 function position(event) { const bounds = pad.getBoundingClientRect(); return [(event.clientX-bounds.left)*pad.width/bounds.width,(event.clientY-bounds.top)*pad.height/bounds.height]; }
 pad.onpointerdown = event => {
   if (sending || activeLine || (event.pointerType === 'mouse' && event.button !== 0)) return;
   event.preventDefault(); pad.setPointerCapture(event.pointerId); activePointer = event.pointerId;
   const start=position(event); future=[];
-  activeLine = {tool:selectedTool,size:Number(el('overlaySize').value)*pad.width/window.innerWidth,points:['circle','box'].includes(selectedTool)?[start,start]:[start]}; lines.push(activeLine); render();
+  activeLine = {tool:selectedTool,color:selectedInk,size:Number(el('overlaySize').value)*pad.width/window.innerWidth,points:['circle','box'].includes(selectedTool)?[start,start]:[start]}; lines.push(activeLine); render();
 };
 pad.onpointermove = event => { if (activeLine && activePointer === event.pointerId) { const point=position(event);
   if(['circle','box'].includes(activeLine.tool))activeLine.points[1]=point;
@@ -27,12 +28,21 @@ function tool(value) {
   }
 }
 for(const [id,name] of [['overlayPen','pen'],['overlayCircle','circle'],['overlayBox','box'],['overlayEraser','eraser']])el(id).onclick=()=>tool(name);
+function ink(color) {
+  selectedInk=color;
+  document.querySelectorAll('[data-overlay-color]').forEach(button=>{
+    const selected=button.dataset.overlayColor===color;
+    button.classList.toggle('selected',selected);button.setAttribute('aria-pressed',String(selected));
+  });
+}
+document.querySelectorAll('[data-overlay-color]').forEach(button=>button.onclick=()=>{if(sending)return;ink(button.dataset.overlayColor);if(selectedTool==='eraser')tool('pen');});
 el('overlayUndo').onclick=()=>{activeLine=null;if(lines.length)future.push(lines.pop());render();};
 el('overlayClear').onclick=()=>{activeLine=null;lines=[];future=[];render();};
 async function cancel() { if (!sending) await window.doodle.cancelOverlay(); }
 el('overlayCancel').onclick = cancel;
 document.addEventListener('keydown', event => {
   if(event.target.matches?.('input') && !((event.ctrlKey||event.metaKey)&&event.key==='Enter')){if(event.key==='Escape'){event.preventDefault();cancel();}return;}
+  if (!sending&&!event.ctrlKey&&!event.metaKey&&!event.altKey&&/^[1-5]$/.test(event.key)) {event.preventDefault();document.querySelectorAll('[data-overlay-color]')[Number(event.key)-1].click();}
   if (event.key === 'Tab') { event.preventDefault(); document.body.classList.toggle('controls-hidden'); }
   if ((event.ctrlKey || event.metaKey) && event.key === 'Enter' && !sending) { event.preventDefault(); el('overlayDone').click(); }
   if (event.key === 'Escape') { event.preventDefault(); cancel(); }
@@ -51,5 +61,7 @@ window.doodle.overlayInfo().then(frame => {
   el('desktopImage').src = frame.image;
   pad.width = frame.width; pad.height = frame.height;
   lines=frame.lines || []; el('overlayHint').value=frame.hint || '';
+  const previousInk=lines.findLast(line=>line.tool!=='eraser')?.color;
+  if(previousInk&&[...document.querySelectorAll('[data-overlay-color]')].some(button=>button.dataset.overlayColor===previousInk))ink(previousInk);
   render();
 }).catch(e => { el('overlayStatus').textContent = e.message; });

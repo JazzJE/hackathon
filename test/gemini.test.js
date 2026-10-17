@@ -26,6 +26,8 @@ test('Gemini sends inline images, schema and a header-only key to Google',async(
   assert.match(body.systemInstruction.parts[0].text,/Never substitute/);
   assert.match(body.systemInstruction.parts[0].text,/circle around an existing Dock icon/);
   assert.match(body.systemInstruction.parts[0].text,/green speech bubble is Messages/);
+  assert.match(body.systemInstruction.parts[0].text,/SAME ink color/);
+  assert.match(body.systemInstruction.parts[0].text,/Colors link targets to destinations/);
 });
 test('Gemini blocks unsafe, empty and cut-short responses',async()=>{
   for (const [data,pattern] of [
