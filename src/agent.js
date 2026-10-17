@@ -1,5 +1,5 @@
 const { spawn } = require('node:child_process');
-const {TOPICS,comedyPlan}=require('./comedy');
+const {drawingPlan}=require('./comedy');
 const APPS = {
   chrome: { id: 'Google.Chrome', launch: 'chrome.exe' },
   firefox: { id: 'Mozilla.Firefox', launch: 'firefox.exe' },
@@ -13,7 +13,8 @@ const APPS = {
 function validate(plan) {
   if (!plan || typeof plan.title !== 'string' || typeof plan.explanation !== 'string' || !Number.isFinite(plan.confidence) || plan.confidence < 0 || plan.confidence > 1 || !Array.isArray(plan.actions) || plan.actions.length > 8) throw Error('The AI returned an invalid plan. Try drawing more clearly.');
   for (const a of plan.actions) {
-    if (!a || !['open_app','open_url','keys','shell','click'].includes(a.type) || typeof a.value !== 'string' || a.value.length > 12000) throw Error('Invalid action.');
+    if (!a || !['open_app','open_url','keys','shell','click','close_tab'].includes(a.type) || typeof a.value !== 'string' || a.value.length > 12000) throw Error('Invalid action.');
+    if(a.type === 'close_tab' && !/^-?\d{1,6}:-?\d{1,6}$/.test(a.value))throw Error('Invalid tab target.');
     if(a.type === 'click' && !/^(left|middle|right):-?\d{1,6}:-?\d{1,6}$/.test(a.value)) throw Error('Invalid click coordinates.');
     if (a.type === 'open_app' && !Object.hasOwn(APPS,a.value)) throw Error('Unknown app.');
     if (a.type === 'open_url' && !/^https?:\/\//i.test(a.value)) throw Error('Only web URLs are allowed.');
@@ -24,12 +25,7 @@ function validate(plan) {
 function resolvePlan(plan) {
   validate(plan);
   if(plan.actions.length) return plan;
-  return {
-    title:'No idea. Have some cats.',
-    explanation:'I could not find any plausible action in that drawing, so I am opening Google Images for cats instead.',
-    confidence:1, fallback:true,
-    actions:[{type:'open_url',value:'https://www.google.com/search?tbm=isch&q=cat+images'}]
-  };
+  throw Error('No usable action was returned. Add a short hint and try again.');
 }
 const LOCAL_MODEL = 'gemma3:4b';
 const PLAN_SCHEMA = {
@@ -45,24 +41,20 @@ async function interpret({ image, hint = '', key, model, provider = 'local', sig
   const timeout = AbortSignal.timeout(provider === 'local' ? 300000 : 60000);
   const requestSignal = signal ? AbortSignal.any([signal,timeout]) : timeout;
   if(comedy){
-    const format={type:'object',required:['topic'],additionalProperties:false,properties:{topic:{type:'string',enum:[...TOPICS,'none']}}};
-    const prompt=`Which topic best matches this drawing? Choose ONE: ${TOPICS.join(', ')}. Use a plausible guess for messy drawings. Only none if no idea at all. Return JSON {"topic":"choice"}. Hint: ${String(hint).slice(0,300)}`;
+    const format={type:'object',required:['caption'],additionalProperties:false,properties:{caption:{type:'string'}}};
+    const prompt=`What object or action does this drawing look like? Give your best specific guess in a short phrase.${hint ? " Context: "+String(hint).slice(0,300) : ""}`;
     let response;
     if(provider==='local'){
-      try{response=await fetcher('http://127.0.0.1:11434/api/generate',{method:'POST',signal:requestSignal,headers:{'Content-Type':'application/json'},body:JSON.stringify({model:model||'moondream:latest',prompt,images:[image.slice('data:image/png;base64,'.length)],format,stream:false,keep_alive:'1h',options:{temperature:0,num_predict:24,num_ctx:2048}})});}
+      try{response=await fetcher('http://127.0.0.1:11434/api/generate',{method:'POST',signal:requestSignal,headers:{'Content-Type':'application/json'},body:JSON.stringify({model:model||'moondream:latest',prompt:prompt+' Return JSON with a caption field.',images:[image.slice('data:image/png;base64,'.length)],format,stream:false,keep_alive:'1h',options:{temperature:.2,num_predict:32,num_ctx:2048}})});}
       catch(e){if(signal?.aborted)throw Error('Drawing recognition stopped.');throw Error('Local comedy AI is unavailable. Check Ollama in Settings.');}
       if(!response.ok)throw Error(response.status===404?'Download the fast vision model: ollama pull moondream':`Local comedy AI failed (${response.status}).`);
       const data=await response.json();
-      let topic;try{topic=JSON.parse(data.response).topic}catch{throw Error('Comedy AI could not read that. Try a short hint.');}
-      if(topic==='none')return {title:'No idea',explanation:'No plausible topic yet.',confidence:0,actions:[]};
-      return validate(comedyPlan(topic));
+      return validate(drawingPlan(JSON.parse(data.response).caption));
     }
     response=await fetcher('https://api.openai.com/v1/responses',{method:'POST',signal:requestSignal,headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json'},body:JSON.stringify({model:model||'gpt-4.1-mini',store:false,instructions:prompt,text:{format:{type:'json_schema',name:'drawing_topic',strict:true,schema:format}},input:[{role:'user',content:[{type:'input_image',image_url:image}]}]})});
     if(!response.ok)throw Error(`OpenAI request failed (${response.status}).`);
     const data=await response.json(),text=(data.output||[]).flatMap(o=>o.content||[]).filter(c=>c.type==='output_text').map(c=>c.text).join('');
-    const topic=JSON.parse(text).topic;
-    if(topic==='none')return {title:'No idea',explanation:'No plausible topic yet.',confidence:0,actions:[]};
-    return validate(comedyPlan(topic));
+    return validate(drawingPlan(JSON.parse(text).caption));
   }
   if(provider === 'local') {
     let response;
@@ -120,7 +112,7 @@ function powershell(script, onChild = () => {}) {
 const SHORTCUTS = {close_tab:'^w',new_tab:'^t',undo:'^z',redo:'^y',save:'^s',copy:'^c',paste:'^v',select_all:'^a',switch_window:'%{TAB}',volume_up:'{VOLUME_UP}',volume_down:'{VOLUME_DOWN}',mute:'{VOLUME_MUTE}'};
 function scriptFor(a, install) {
   if(a.type === 'shell') return a.value;
-  if(a.type === 'click') throw Error('Click actions require the Windows helper.');
+  if(a.type === 'click'||a.type === 'close_tab') throw Error('This action requires the Windows helper.');
   if(a.type === 'keys' && ['volume_up','volume_down','mute'].includes(a.value)) {
     const code = {volume_up:175,volume_down:174,mute:173}[a.value];
     return `Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public class DoodleKeys { [DllImport("user32.dll")] public static extern void keybd_event(byte key, byte scan, uint flags, UIntPtr extra); }'; [DoodleKeys]::keybd_event(${code},0,0,[UIntPtr]::Zero); [DoodleKeys]::keybd_event(${code},0,2,[UIntPtr]::Zero)`;
@@ -133,3 +125,4 @@ function scriptFor(a, install) {
   return `$name=${q(a.value)}; $entry=Get-StartApps | Where-Object { $_.Name -like ('*'+$name+'*') } | Select-Object -First 1; if($entry){ Start-Process explorer.exe -ArgumentList ('shell:AppsFolder\\'+$entry.AppID) } else { try { Start-Process ${q(app.launch)} -ErrorAction Stop } catch { ${install && app.id ? `& winget install --id ${q(app.id)} --exact --source winget --accept-package-agreements --accept-source-agreements; if($LASTEXITCODE -ne 0){throw 'App installation failed'}; Write-Output 'Installed. Draw the logo again to launch the app.'` : "throw 'App not found. Enable automatic installation in Settings to install supported apps.'"} } }`;
 }
 module.exports = { APPS, LOCAL_MODEL, validate, resolvePlan, interpret, powershell, scriptFor };
+

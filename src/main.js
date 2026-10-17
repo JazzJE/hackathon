@@ -12,6 +12,7 @@ let settings={provider:'local',model:'moondream:latest',key:'',shell:false,insta
 const reactions=new Map();
 const smokeMode = process.env.DOODLE_SMOKE === '1' || process.env.DOODLE_LOCAL_SMOKE === '1' || process.env.DOODLE_OVERLAY_SMOKE === '1' || process.env.DOODLE_COMEDY_SMOKE === '1';
 if(smokeMode) app.setPath('userData',path.join(app.getPath('temp'),'doodle-do-smoke',String(process.pid)));
+if(process.env.DOODLE_OVERLAY_SMOKE==='1')app.commandLine.appendSwitch('force-renderer-accessibility');
 app.whenReady().then(() => {
   win = new BrowserWindow({ width: 1320, height: 900, minWidth: 960, minHeight: 720, backgroundColor: '#f5f3ed', webPreferences: { preload: path.join(__dirname,'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true } });
   win.loadFile(path.join(__dirname,'index.html'));
@@ -46,20 +47,23 @@ app.whenReady().then(() => {
         if(process.env.DOODLE_SCREENSHOT)require('node:fs').writeFileSync(process.env.DOODLE_SCREENSHOT,(await reaction.webContents.capturePage()).toPNG());
       }
       if(process.env.DOODLE_OVERLAY_SMOKE === '1'){
-        const bounds=screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).bounds;
-        const testWindow=new BrowserWindow({x:bounds.x+100,y:bounds.y+100,width:700,height:400,frame:false,webPreferences:{contextIsolation:true,nodeIntegration:false}});
-        await testWindow.loadURL('data:text/html,'+encodeURIComponent('<body style="margin:0;background:#eee"><div style="position:absolute;left:100px;top:100px;width:300px;height:80px;background:#d8ed8c" onauxclick="if(event.button===1){window.hit=true;event.preventDefault()}">Test tab · middle click here</div></body>'));
-        testWindow.show();testWindow.focus();await new Promise(r=>setTimeout(r,250));
-        await showOverlay();
-        const x=bounds.x+350-overlayBounds.x,y=bounds.y+240-overlayBounds.y;
-        await overlay.webContents.executeJavaScript(`strokes=[{points:[[${x-15},${y-15}],[${x+15},${y+15}]]},{points:[[${x+15},${y-15}],[${x-15},${y+15}]]}];draw();`);
-        await new Promise(r=>setTimeout(r,100));
-        if(process.env.DOODLE_SCREENSHOT)require('node:fs').writeFileSync(process.env.DOODLE_SCREENSHOT,(await overlay.webContents.capturePage()).toPNG());
-        const start=performance.now();await overlay.webContents.executeJavaScript('submit()');
-        await new Promise(r=>setTimeout(r,150));
-        if(!await testWindow.webContents.executeJavaScript('window.hit===true'))throw Error('Overlay middle-click missed the drawn position');
-        console.log('OVERLAY_SMOKE',JSON.stringify({dimmed:true,targetedMiddleClick:true,elapsedMs:Math.round(performance.now()-start),scaleFactor:screen.getDisplayMatching(bounds).scaleFactor}));
-        testWindow.close();
+        const fs=require('node:fs'),{spawn}=require('node:child_process'),{pathToFileURL}=require('node:url');
+        const base=path.join(app.getPath('temp'),'doodle-overlay-test-'+process.pid);fs.mkdirSync(base,{recursive:true});
+        for(const letter of ['A','B'])fs.writeFileSync(path.join(base,letter+'.html'),'<title>Doodle Tab Test '+letter+'</title><h1>Disposable test tab</h1>');
+        const browser=spawn('C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',['--user-data-dir='+path.join(base,'profile'),'--no-first-run','--no-default-browser-check','--disable-sync','--new-window',pathToFileURL(path.join(base,'A.html')).href,pathToFileURL(path.join(base,'B.html')).href],{stdio:'ignore'});
+        try{
+          let handle=0,tabs=[];
+          for(let i=0;i<40;i++){await new Promise(r=>setTimeout(r,500));handle=await native.call('window-for-process',{processId:browser.pid});if(handle)tabs=await native.call('tabs',{handle});if(tabs.filter(t=>t.name.startsWith('Doodle Tab Test')).length===2)break;}
+          const target=tabs.find(t=>t.name.startsWith('Doodle Tab Test A'));if(!target)throw Error('Disposable tabs unavailable');
+          win.minimize();await native.call('focus',{handle});await new Promise(r=>setTimeout(r,250));await showOverlay();
+          const point=screen.screenToDipPoint({x:Math.round(target.x+target.width/2),y:Math.round(target.y+target.height/2)});
+          const x=point.x-overlayBounds.x,y=point.y-overlayBounds.y;
+          await overlay.webContents.executeJavaScript('strokes=[{points:[['+(x-6)+','+(y-6)+'],['+(x+6)+','+(y+6)+'],['+(x+6)+','+(y-6)+'],['+(x-6)+','+(y+6)+']]}];draw();');
+          const start=performance.now();await overlay.webContents.executeJavaScript('submit()');
+          const after=await native.call('tabs',{handle});if(after.some(t=>t.name.startsWith('Doodle Tab Test A'))||!after.some(t=>t.name.startsWith('Doodle Tab Test B')))throw Error('Overlay closed wrong tab or no tab');
+          console.log('OVERLAY_SMOKE',JSON.stringify({realEdge:true,targetedTabClosed:true,singleStroke:true,elapsedMs:Math.round(performance.now()-start)}));
+        }finally{browser.kill();}
+
       }
       if(process.env.DOODLE_LOCAL_SMOKE === '1') {
         const localResult=await win.webContents.executeJavaScript(`(async()=>{
@@ -126,7 +130,7 @@ async function processDrawing(args) {
     }
     if(recognition.signal.aborted) throw Error('Drawing recognition stopped.');
     pending={...resolvePlan(result),source:args.provider||'local',latencyMs:performance.now()-start};
-    if(!pending.fallback){if(cache.size>=32)cache.delete(cache.keys().next().value);cache.set(cacheKey,pending);}
+    if(cache.size>=32)cache.delete(cache.keys().next().value);cache.set(cacheKey,pending);
     return pending;
   } finally { busy=false; recognition=null; }
 }
@@ -145,17 +149,21 @@ async function executePlan(options,fromOverlay=false) {
     for(const action of plan.actions) {
       if(stopped) throw Error('Stopped.');
       win.webContents.send('progress', `Running ${action.type}: ${action.value.slice(0,100)}`);
-      if(action.type==='keys')results.push(await native.call('keys',{value:action.value}));
+      if(action.type==='close_tab'){const [x,y]=action.value.split(':');results.push(await native.call('close-tab',{x:Number(x),y:Number(y),handle:fromOverlay?targetWindow:0,strictTarget:smokeMode}));}
+      else if(action.type==='keys'&&action.value==='close_tab')results.push(await native.call('close-tab',{handle:fromOverlay?targetWindow:0}));
+      else if(action.type==='keys')results.push(await native.call('keys',{value:action.value}));
       else if(action.type==='click'){const [button,x,y]=action.value.split(':');results.push(await native.call('click',{button,x:Number(x),y:Number(y)}));}
       else if(action.type==='open_url'){await shell.openExternal(action.value);results.push('Done.');}
       else results.push(await powershell(scriptFor(action, options.install), child => { active = child; })); active = null;
     }
-    if(plan.comedy)showReaction(plan.topic);
+    if(plan.comedy)showReaction(plan);
     return results;
   } finally { busy = false; active = null; if(!fromOverlay&&!plan.comedy){win.restore(); win.focus();} }
 }
-function showReaction(topic){
-  const joke=JOKES[topic]||JOKES.chaos,bounds=screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
+function showReaction(plan){
+  const joke=typeof plan==='string'?JOKES[plan]:{emoji:JOKES[plan.topic]?.emoji||'✳',title:plan.title,line:plan.explanation};
+  if(!joke)return;
+  const bounds=screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
   const reaction=new BrowserWindow({width:610,height:175,x:Math.round(bounds.x+(bounds.width-610)/2),y:bounds.y+30,frame:false,resizable:false,alwaysOnTop:true,skipTaskbar:true,backgroundColor:'#dcf39c',webPreferences:{preload:path.join(__dirname,'preload.js'),contextIsolation:true,nodeIntegration:false,sandbox:true}});
   reactions.set(reaction.webContents.id,joke);reaction.loadFile(path.join(__dirname,'reaction.html'));
   reaction.webContents.setWindowOpenHandler(()=>({action:'deny'}));
@@ -163,7 +171,7 @@ function showReaction(topic){
   setTimeout(()=>{if(!reaction.isDestroyed())reaction.close()},5500);
   return reaction;
 }
-ipcMain.handle('reaction-data',event=>reactions.get(event.sender.id)||JOKES.chaos);
+ipcMain.handle('reaction-data',event=>reactions.get(event.sender.id)||{emoji:'✳',title:'Doodle Do',line:'Your drawing. Your questionable decision.'});
 ipcMain.handle('execute',(_,options)=>executePlan(options));
 ipcMain.handle('overlay-submit',async(event,args)=>{
   if(event.sender!==overlay.webContents||!overlay.isVisible()||busy)throw Error('Overlay is not ready.');
@@ -175,7 +183,7 @@ ipcMain.handle('overlay-submit',async(event,args)=>{
     if(cross){
       if(cross.x<0||cross.y<0||cross.x>overlayBounds.width||cross.y>overlayBounds.height)throw Error('Drawing is outside this screen.');
       const point=screen.dipToScreenPoint({x:Math.round(overlayBounds.x+cross.x),y:Math.round(overlayBounds.y+cross.y)});
-      plan=validate({title:'Close the tab under your X',explanation:'Middle-click the tab at the exact drawing position. No model wait.',confidence:1,source:'gesture',latencyMs:0,actions:[{type:'click',value:`middle:${point.x}:${point.y}`}]});pending=plan;
+      plan=validate({title:'Close the tab under your X',explanation:'Close the actual browser tab. Use its close button or focus the browser and send Ctrl+W.',confidence:1,source:'gesture',latencyMs:0,actions:[{type:'close_tab',value:`${point.x}:${point.y}`}]});pending=plan;
     } else plan=await processDrawing({...options,image:args.image,strokes:args.strokes});
     win.webContents.send('plan',plan);
     const results=await executePlan(options,true);win.webContents.send('progress',results.join('\n'));return results;

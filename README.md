@@ -6,7 +6,7 @@
 
 With the app running, press **Ctrl+Alt+D**. The monitor under your cursor dims like Snipping Tool. Draw directly over the visible desktop, then press **Enter** to run, or **Esc** to cancel. Undo with Ctrl+Z. The **Screen** button opens the same overlay if another app owns the hotkey.
 
-Draw an X using two crossed strokes over a browser tab. The app middle-clicks the **tab under the drawing**, rather than closing whichever tab happens to be active. This works with browsers that close tabs on middle-click, including Chrome, Edge, and Firefox. Position the intersection on the tab itself. An X elsewhere will middle-click that location. Display scaling and monitor offsets are converted to physical mouse coordinates.
+Draw a small X over a Chrome or Edge tab, using one or two strokes. The app targets the tab at the intersection and closes it through Windows accessibility controls, or selects that tab and sends Ctrl+W. Display scaling is converted to physical screen coordinates.
 
 Only the drawn ink goes to the model, not the desktop beneath it. Other screen drawings use the same comedy/literal mode and permissions as the main app. The overlay hides before execution and restores focus to the window you were drawing over.
 
@@ -15,7 +15,7 @@ Only the drawn ink goes to the model, not the desktop beneath it. Other screen d
 - Two-stroke X and recognizable dollar signs use immediate gesture recognition, with no model request. Dollar signs use the instant path in Comedy mode.
 - A recognizable hint such as `money` or `heart` skips the model in Comedy mode.
 - Identical drawings are cached for the session (up to 32); engine, model, hint, and mode are included in the cache key.
-- Comedy mode uses the smaller **Moondream** vision model and generates only a tiny topic label. The jokes are built locally instead of waiting for prose.
+- Comedy mode uses the smaller **Moondream** vision model and generates a short, specific description of the drawing. The jokes are built locally instead of waiting for prose.
 - Local models preload in the background and stay warm for an hour. A persistent Windows helper sends shortcuts/clicks without launching PowerShell for every input. Focus delay is reduced to 120 ms.
 
 Measured on the development machine: the overlay target-click test took about 0.48 seconds, a fresh Moondream money interpretation about 9.6 seconds versus 29 seconds with the previous Gemma path, and the exact repeat returned from cache in under 1 ms. These are example measurements, not guarantees; new complex drawings can still take several seconds on CPU.
@@ -49,7 +49,7 @@ The example cards load **preset demo plans**, not AI recognition. Click **Run th
 1. Draw using mouse, pen, or touch. Undo, erase, clear, and adjust brush size.
 2. Optionally add a hint. Click **Make it happen**.
 3. A gesture, hint, cache hit, or AI returns the action. AI generates only the short command/topic, with the displayed explanation built locally. No desktop screenshots or other computer data are sent to the model.
-4. The plan appears and runs automatically, including low-confidence best guesses. If the AI finds no plausible action, it takes a second look. Only if it still has absolutely no interpretation does the app open Google Images for cats. Confidence alone never triggers the cat fallback. App installation and PowerShell still require their respective Settings toggles to be enabled before you submit the drawing.
+4. The plan appears and runs automatically, including low-confidence best guesses. If the AI finds no plausible action, it takes a second look. There are no generic grass or cat backups. Each best guess uses the drawing’s own content; a technical failure displays an error. App installation and PowerShell still require their respective Settings toggles to be enabled before you submit the drawing.
 5. The sketchpad minimizes, returning focus to the previous window. Shortcuts affect that window. Comedy actions show a roast and leave the opened website in front. Results and timing remain in the main app.
 
 ## What it can do

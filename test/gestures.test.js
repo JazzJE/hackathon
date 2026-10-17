@@ -5,6 +5,12 @@ test('X recognition locates the actual intersection rather than the current tab'
   assert.deepEqual(recognizeX([{points:[[100,20],[150,70]]},{points:[[150,20],[100,70]]}]),{x:125,y:45});
   assert.deepEqual(recognizeX([{points:[[150,70],[100,20]]},{points:[[100,70],[150,20]]}]),{x:125,y:45});
 });
+test('small, rough, single-stroke and boxed Xs are recognized without AI',()=>{
+  assert.deepEqual(recognizeX([{points:[[10,10],[16,16]]},{points:[[16,10],[10,16]]}]),{x:13,y:13});
+  assert.deepEqual(recognizeX([{points:[[10,10],[50,50],[50,10],[10,50]]}]),{x:30,y:30});
+  assert.deepEqual(recognizeX([{points:[[10,10],[21,22],[31,29],[50,50]]},{points:[[50,10],[39,22],[28,31],[10,50]]}]),{x:30,y:30});
+  assert.deepEqual(recognizeX([{points:[[0,0],[60,0],[60,60],[0,60],[0,0]]},{points:[[10,10],[50,50]]},{points:[[50,10],[10,50]]}]),{x:30,y:30});
+});
 test('uncrossed strokes, curved marks, dots, and erasing do not trigger tab close',()=>{
   for(const strokes of [[],[{points:[[1,1],[50,50]]}],[{points:[[10,10],[50,50]]},{points:[[80,10],[120,50]]}],[{points:[[10,10],[20,70],[50,50]]},{points:[[50,10],[10,50]]}],[{erase:true,points:[[10,10],[50,50]]},{points:[[50,10],[10,50]]}],[{points:[[1,1],[2,2]]},{points:[[2,1],[1,2]]}]])assert.equal(recognizeX(strokes),null);
 });

@@ -2,11 +2,9 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { validate, resolvePlan, scriptFor, interpret } = require('../src/agent');
 const plan = actions => ({title:'Test',explanation:'Test drawing',confidence:.9,actions});
-test('only plans with no plausible action become a Google Images cat search',()=>{
+test('empty plans never redirect to a generic backup page',()=>{
   for(const original of [{...plan([]),confidence:0},plan([])]){
-    const result=resolvePlan(original);
-    assert.equal(result.fallback,true);
-    assert.deepEqual(result.actions,[{type:'open_url',value:'https://www.google.com/search?tbm=isch&q=cat+images'}]);
+    assert.throws(()=>resolvePlan(original),/No usable action/);
   }
   const clear=plan([{type:'open_app',value:'notepad'}]);
   assert.equal(resolvePlan(clear),clear);
@@ -14,6 +12,10 @@ test('only plans with no plausible action become a Google Images cat search',()=
     const guess={...clear,confidence};
     assert.equal(resolvePlan(guess),guess,'low confidence must not suppress a plausible action');
   }
+});
+test('targeted close-tab actions validate physical coordinates',()=>{
+  validate(plan([{type:'close_tab',value:'1573:578'}]));
+  assert.throws(()=>validate(plan([{type:'close_tab',value:'middle:1573:578'}])));
 });
 test('rejects unknown actions, bad URLs, and unbounded plans',()=>{
   for(const a of [{type:'delete',value:'x'},{type:'open_url',value:'file:///C:/secret'},{type:'keys',value:'arbitrary'},{type:'open_app',value:'missing'}]) assert.throws(()=>validate(plan([a])));

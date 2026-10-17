@@ -19,11 +19,10 @@ test('Make it happen interprets and executes once without a second click',async(
   await app.element('interpret').onclick();assert.equal(app.executions.length,1);
   assert.equal(app.element('status').textContent,'Done.');assert.equal(app.element('execute').disabled,true);
 });
-test('cat-search fallback runs automatically and is labelled as a fallback',async()=>{
+test('an empty model result never opens an unrelated backup',async()=>{
   const app=ui(async()=>resolvePlan({...plan,confidence:0,actions:[]}));await app.demos[2].onclick();
-  await app.element('interpret').onclick();assert.equal(app.executions.length,1);
-  assert.match(app.element('actions').textContent,/google.com\/search/);
-  assert.match(app.element('confidence').textContent,/Cat search fallback/);
+  await app.element('interpret').onclick();assert.equal(app.executions.length,0);
+  assert.match(app.element('status').textContent,/No usable action/);
 });
 test('low-confidence best guesses still execute automatically',async()=>{
   const app=ui(async()=>resolvePlan({...plan,confidence:.01}));await app.demos[2].onclick();

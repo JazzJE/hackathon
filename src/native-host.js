@@ -15,7 +15,7 @@ class NativeHost {
       message.error?request.reject(Error(message.error)):request.resolve(message.result);
     });
     child.stderr.on('data',()=>{});
-    const fail=()=>{if(this.child===child)this.child=null;for(const request of this.pending.values()){clearTimeout(request.timer);request.reject(Error('Windows helper stopped. Try again.'))}this.pending.clear()};
+    const fail=()=>{if(this.child!==child)return;this.child=null;for(const request of this.pending.values()){clearTimeout(request.timer);request.reject(Error('Windows helper stopped. Try again.'))}this.pending.clear()};
     child.on('error',fail);child.on('exit',fail);
     child.stdin.on('error',()=>{});
   }
