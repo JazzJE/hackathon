@@ -65,7 +65,7 @@ test('compact AI commands are expanded locally without generating explanations',
     body=JSON.parse(options.body);return {ok:true,json:async()=>({done:true,message:{content:'{"actions":[{"type":"open_app","value":"notepad"}]}'}})};
   });
   assert.equal(result.quick,true);assert.equal(result.actions[0].value,'notepad');
-  assert.deepEqual(body.format.required,['actions']);assert.equal(body.options.num_ctx,2048);
+  assert.deepEqual(body.format.required,['actions']);assert.equal(body.options.num_ctx,4096);
   assert.equal(body.keep_alive,'1h');
 });
 test('local AI reports missing model, offline server, malformed JSON, and truncated output',async()=>{
@@ -78,4 +78,13 @@ test('local AI reports missing model, offline server, malformed JSON, and trunca
 test('local AI cancellation cannot return an executable plan',async()=>{
   const controller=new AbortController();controller.abort();
   await assert.rejects(()=>interpret({image:'data:image/png;base64,AAAA',signal:controller.signal},async(_,options)=>{options.signal.throwIfAborted()}),/recognition stopped/);
+});
+
+test('incomplete website addresses never become executable actions',()=>{
+  for(const value of ['https://','https:// ','https://[invalid'])assert.throws(()=>validate(plan([{type:'open_url',value}])));
+  validate(plan([{type:'open_url',value:'https://crypto.com/us/price/dogecoin'}]));
+});
+test('a completed response arriving after Stop cannot run in literal mode',async()=>{
+  const controller=new AbortController();
+  await assert.rejects(()=>interpret({image:'data:image/png;base64,AAAA',signal:controller.signal},async()=>({ok:true,json:async()=>{controller.abort();return {done:true,message:{content:JSON.stringify(plan([{type:'open_app',value:'notepad'}]))}};}})),/recognition stopped/);
 });

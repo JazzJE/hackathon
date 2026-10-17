@@ -42,7 +42,7 @@ function Get-DoodleProcess([IntPtr]$handle) {
 function Test-DoodleBrowser([IntPtr]$handle) {
     if($handle -eq [IntPtr]::Zero){return $false}
     $process=Get-DoodleProcess $handle
-    return $null -ne $process -and $process.ProcessName -match '^(msedge|chrome|firefox|brave|opera|vivaldi|arc)$'
+    return $null -ne $process -and $process.ProcessName -eq 'msedge'
 }
 function Focus-DoodleWindow([IntPtr]$handle) {
     if([DoodleNative]::IsIconic($handle)){$null=[DoodleNative]::ShowWindow($handle,9)}
@@ -53,13 +53,14 @@ function Focus-DoodleWindow([IntPtr]$handle) {
         if($process){$null=$sender.AppActivate($process.Id)}
         Start-Sleep -Milliseconds 60
     }
-    if([DoodleNative]::GetForegroundWindow() -ne $handle){throw 'Could not focus your browser. Click the browser, then draw the X again.'}
+    if([DoodleNative]::GetForegroundWindow() -ne $handle){throw 'Could not focus the target window. Click it and try again.'}
 }
 function Close-DoodleTab($request) {
     $tab=$null; $handle=[IntPtr]::Zero
     if($null -ne $request.x -and $null -ne $request.y){
         $point=New-Object DoodleNative+POINT([int]$request.x,[int]$request.y)
         $handle=[DoodleNative]::GetAncestor([DoodleNative]::WindowFromPoint($point),2)
+        if(!(Test-DoodleBrowser $handle)){throw 'Draw the X over a Microsoft Edge tab. Doodle Do cannot close itself.'}
         $element=[System.Windows.Automation.AutomationElement]::FromPoint((New-Object System.Windows.Point([double]$request.x,[double]$request.y)))
         for($i=0;$i -lt 12 -and $null -ne $element;$i++){
             if($element.Current.ControlType -eq [System.Windows.Automation.ControlType]::TabItem){$tab=$element;break}
@@ -100,7 +101,7 @@ function Close-DoodleTab($request) {
             }
         }
     }
-    if(!(Test-DoodleBrowser $handle)){throw 'No Edge or Chrome browser window found. Open a browser tab and try again.'}
+    if(!(Test-DoodleBrowser $handle)){throw 'No Microsoft Edge window found. Open an Edge tab and try again.'}
     $before=@(Get-DoodleTabs $handle).Count
     Focus-DoodleWindow $handle
     $sender.SendKeys('^w')
@@ -125,7 +126,7 @@ while ($null -ne ($line = [Console]::ReadLine())) {
                 $handle=[IntPtr][long]$request.handle
                 $result=@(Get-DoodleTabs $handle | ForEach-Object { $r=$_.Current.BoundingRectangle;[pscustomobject]@{name=$_.Current.Name;x=$r.X;y=$r.Y;width=$r.Width;height=$r.Height} })
             }
-            'focus' { $h = [IntPtr][long]$request.handle; if ([DoodleNative]::IsWindow($h)) { $null = [DoodleNative]::SetForegroundWindow($h) } }
+            'focus' { $h = [IntPtr][long]$request.handle; if (![DoodleNative]::IsWindow($h)) { throw 'The target window is no longer open.' }; Focus-DoodleWindow $h }
             'click' {
                 $null = [DoodleNative]::SetCursorPos([int]$request.x,[int]$request.y)
                 $buttons = @{middle=@(0x20,0x40);left=@(0x02,0x04);right=@(0x08,0x10)}

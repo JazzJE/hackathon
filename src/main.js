@@ -12,6 +12,13 @@ let settings={provider:'local',model:'gemma3:4b',key:'',shell:false,install:fals
 
 const smokeMode = process.env.DOODLE_SMOKE === '1' || process.env.DOODLE_LOCAL_SMOKE === '1' || process.env.DOODLE_OVERLAY_SMOKE === '1' || process.env.DOODLE_COMEDY_SMOKE === '1';
 if(smokeMode) app.setPath('userData',path.join(app.getPath('temp'),'doodle-do-smoke',String(process.pid)));
+if(!smokeMode){
+  if(!app.requestSingleInstanceLock())app.quit();
+  app.on('second-instance',()=>{
+    overlay?.hide();
+    if(win&&!win.isDestroyed()){if(win.isMinimized())win.restore();win.show();win.focus();}
+  });
+}
 if(process.env.DOODLE_OVERLAY_SMOKE==='1')app.commandLine.appendSwitch('force-renderer-accessibility');
 app.whenReady().then(() => {
   win = new BrowserWindow({ show: !smokeMode, width: 1320, height: 900, minWidth: 960, minHeight: 720, backgroundColor: '#f5f3ed', webPreferences: { preload: path.join(__dirname,'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true } });
@@ -41,7 +48,7 @@ app.whenReady().then(() => {
           const second=await window.doodle.interpret(args);
           return {topic:first.topic,url:first.actions[0]?.value,firstMs:Math.round(first.latencyMs),repeatMs:Math.round(second.latencyMs),repeatSource:second.source};
         })()`);
-        if(result.topic!=='money'||result.url!=='https://crypto.com/dogecoin'||result.repeatSource!=='cache')throw Error('Money interpretation failed: '+JSON.stringify(result));
+        if(result.topic!=='money'||result.url!=='https://crypto.com/us/price/dogecoin'||result.repeatSource!=='cache')throw Error('Money interpretation failed: '+JSON.stringify(result));
         console.log('COMEDY_SMOKE',JSON.stringify(result));
       }
       if(process.env.DOODLE_OVERLAY_SMOKE === '1'){
@@ -54,12 +61,22 @@ app.whenReady().then(() => {
           for(let i=0;i<40;i++){await new Promise(r=>setTimeout(r,500));handle=await native.call('window-for-process',{processId:browser.pid});if(handle)tabs=await native.call('tabs',{handle});if(tabs.filter(t=>t.name.startsWith('Doodle Tab Test')).length===2)break;}
           const target=tabs.find(t=>t.name.startsWith('Doodle Tab Test A'));if(!target)throw Error('Disposable tabs unavailable');
           win.minimize();await native.call('focus',{handle});await new Promise(r=>setTimeout(r,250));await showOverlay();
+          await new Promise(r=>setTimeout(r,150));
           const point=screen.screenToDipPoint({x:Math.round(target.x+target.width/2),y:Math.round(target.y+target.height/2)});
           const x=point.x-overlayBounds.x,y=point.y-overlayBounds.y;
           await overlay.webContents.executeJavaScript('strokes=[{points:[['+(x-6)+','+(y-6)+'],['+(x+6)+','+(y+6)+'],['+(x+6)+','+(y-6)+'],['+(x-6)+','+(y+6)+']]}];draw();');
           const start=performance.now();await overlay.webContents.executeJavaScript('submit()');
           const after=await native.call('tabs',{handle});if(after.some(t=>t.name.startsWith('Doodle Tab Test A'))||!after.some(t=>t.name.startsWith('Doodle Tab Test B')))throw Error('Overlay closed wrong tab or no tab');
           console.log('OVERLAY_SMOKE',JSON.stringify({realEdge:true,targetedTabClosed:true,singleStroke:true,elapsedMs:Math.round(performance.now()-start)}));
+          win.restore();win.show();win.focus();await new Promise(r=>setTimeout(r,200));
+          const ownBounds=win.getBounds();
+          const ownPoint=screen.dipToScreenPoint({x:Math.round(ownBounds.x+ownBounds.width/2),y:Math.round(ownBounds.y+ownBounds.height/2)});
+          let refused=false;
+          try{await native.call('close-tab',{...ownPoint,handle,strictTarget:true});}
+          catch(e){refused=/Microsoft Edge tab/.test(e.message);}
+          if(!refused||win.isDestroyed())throw Error('Doodle Do was not protected from close-tab');
+          if(!(await native.call('tabs',{handle})).some(t=>t.name.startsWith('Doodle Tab Test B')))throw Error('An X over Doodle Do closed an Edge tab');
+          console.log('SELF_CLOSE_PROTECTION_PASSED');
         }finally{browser.kill();}
 
       }
@@ -107,14 +124,14 @@ ipcMain.handle('settings',(event,args)=>{
 ipcMain.handle('local-status', (_, model) => localStatus(typeof model === 'string' ? model.slice(0,200) : undefined));
 async function processDrawing(args) {
   if(busy) throw Error('An action or drawing recognition is still running.');
-  pending=null; busy=true; recognition=new AbortController();
+  pending=null; stopped=false; busy=true; recognition=new AbortController();
   try {
     const start=performance.now();
     const hintedMoney=args.comedy&&isMoneyHint(args.hint);
     if(hintedMoney){pending={...moneyPlan(),source:'hint',latencyMs:performance.now()-start};return pending;}
     if(args.comedy&&!args.hint&&recognizeMoney(args.strokes)){pending={...moneyPlan(),source:'gesture',latencyMs:performance.now()-start};return pending;}
     if(!args.hint && recognizeX(args.strokes)){
-      pending={title:'Close tab',explanation:'Instant X gesture. No model needed.',confidence:1,source:'gesture',latencyMs:performance.now()-start,actions:[{type:'keys',value:'close_tab'}]};return pending;
+      pending={title:'Close Edge tab',explanation:'Close a Microsoft Edge tab. Doodle Do is never a close target.',confidence:1,source:'gesture',latencyMs:performance.now()-start,actions:[{type:'keys',value:'close_tab'}]};return pending;
     }
     const cacheKey=createHash('sha256').update(JSON.stringify([args.image,args.hint||'',args.provider||'local',args.model||'gemma3:4b',!!args.comedy])).digest('hex');
     if(cache.has(cacheKey)){pending={...cache.get(cacheKey),source:'cache',latencyMs:performance.now()-start};return pending;}
@@ -141,7 +158,10 @@ async function executePlan(options,fromOverlay=false) {
   if(plan.actions.some(a => a.type === 'shell') && !options.shell) throw Error('Enable full computer control to run PowerShell actions.');
   busy = true; stopped = false; const results = [];
   try {
-    if(fromOverlay){if(targetWindow)await native.call('focus',{handle:targetWindow});}
+    if(fromOverlay){
+      const needsFocus=plan.actions.some(a=>a.type==='click'||a.type==='shell'||(a.type==='keys'&&a.value!=='close_tab'));
+      if(needsFocus&&targetWindow)await native.call('focus',{handle:targetWindow});
+    }
     else win.minimize();
     await new Promise(r => setTimeout(r, 120));
     for(const action of plan.actions) {
@@ -160,6 +180,7 @@ async function executePlan(options,fromOverlay=false) {
 ipcMain.handle('execute',(_,options)=>executePlan(options));
 ipcMain.handle('overlay-submit',async(event,args)=>{
   if(event.sender!==overlay.webContents||!overlay.isVisible()||busy)throw Error('Overlay is not ready.');
+  stopped=false;
   const options={...settings};
   const cross=recognizeX(args.strokes);
   overlay.hide();
@@ -168,8 +189,9 @@ ipcMain.handle('overlay-submit',async(event,args)=>{
     if(cross){
       if(cross.x<0||cross.y<0||cross.x>overlayBounds.width||cross.y>overlayBounds.height)throw Error('Drawing is outside this screen.');
       const point=screen.dipToScreenPoint({x:Math.round(overlayBounds.x+cross.x),y:Math.round(overlayBounds.y+cross.y)});
-      plan=validate({title:'Close the tab under your X',explanation:'Close the actual browser tab. Use its close button or focus the browser and send Ctrl+W.',confidence:1,source:'gesture',latencyMs:0,actions:[{type:'close_tab',value:`${point.x}:${point.y}`}]});pending=plan;
+      plan=validate({title:'Close the Edge tab under your X',explanation:'Only Microsoft Edge tabs can be closed. Doodle Do cannot close itself.',confidence:1,source:'gesture',latencyMs:0,actions:[{type:'close_tab',value:`${point.x}:${point.y}`}]});pending=plan;
     } else plan=await processDrawing({...options,image:args.image,strokes:args.strokes});
+    if(stopped)throw Error('Drawing recognition stopped.');
     win.webContents.send('plan',plan);
     const results=await executePlan(options,true);win.webContents.send('progress',results.join('\n'));return results;
   }catch(e){reportError(e);throw e;}

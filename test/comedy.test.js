@@ -5,7 +5,7 @@ const {interpret}=require('../src/agent');
 const args={image:'data:image/png;base64,AAAA',comedy:true};
 const reply=response=>({ok:true,json:async()=>({response,done:true})});
 test('only an explicit money hint uses the configured shortcut',()=>{
-  assert.equal(moneyPlan().actions[0].value,'https://crypto.com/dogecoin');
+  assert.equal(moneyPlan().actions[0].value,'https://crypto.com/us/price/dogecoin');
   assert.equal(isMoneyHint('money'),true);
   for(const hint of ['heart','coffee','a book','music','a cash register on fire'])assert.equal(isMoneyHint(hint),false);
 });

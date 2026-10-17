@@ -1,6 +1,7 @@
 const { spawn } = require('node:child_process');
 const APPS = {
   chrome: { id: 'Google.Chrome', launch: 'chrome.exe' },
+  edge: { id: 'Microsoft.Edge', launch: 'msedge.exe' },
   firefox: { id: 'Mozilla.Firefox', launch: 'firefox.exe' },
   spotify: { id: 'Spotify.Spotify', launch: 'spotify.exe' },
   discord: { id: 'Discord.Discord', launch: 'discord.exe' },
@@ -16,7 +17,10 @@ function validate(plan) {
     if(a.type === 'close_tab' && !/^-?\d{1,6}:-?\d{1,6}$/.test(a.value))throw Error('Invalid tab target.');
     if(a.type === 'click' && !/^(left|middle|right):-?\d{1,6}:-?\d{1,6}$/.test(a.value)) throw Error('Invalid click coordinates.');
     if (a.type === 'open_app' && !Object.hasOwn(APPS,a.value)) throw Error('Unknown app.');
-    if (a.type === 'open_url' && !/^https?:\/\//i.test(a.value)) throw Error('Only web URLs are allowed.');
+    if (a.type === 'open_url') {
+      let url;try{url=new URL(a.value);}catch{throw Error('The model returned an incomplete website address.');}
+      if(!['http:','https:'].includes(url.protocol)||!url.hostname)throw Error('Only web URLs are allowed.');
+    }
     if (a.type === 'keys' && !['close_tab','new_tab','undo','redo','save','copy','paste','select_all','switch_window','show_desktop','volume_up','volume_down','mute'].includes(a.value)) throw Error('Unknown shortcut.');
   }
   return plan;
@@ -41,7 +45,7 @@ async function interpret({ image, hint = '', key, model, provider = 'local', sig
   const requestSignal = signal ? AbortSignal.any([signal,timeout]) : timeout;
   if(comedy){
     const format={type:'object',required:['type','value'],additionalProperties:false,properties:{type:{type:'string',enum:['open_app','open_url','keys']},value:{type:'string'}}};
-    const prompt=`Turn this drawing into ONE specific computer action. Make your best guess, even for messy drawings. Choose a playful, surprising action connected to what is actually drawn. Open a relevant real website, launch an app or use a shortcut. No canned jokes, generic meme searches, motivational searches, grass tutorials or cat-image defaults. No roast text. Money or a dollar sign opens https://crypto.com/dogecoin. Return only {"type":"...","value":"..."}. Types: open_app (${Object.keys(APPS).join(',')}), open_url (a complete https URL), keys (close_tab,new_tab,undo,save,show_desktop,mute). Keep the value short. User hint: ${String(hint).slice(0,300)}`;
+    const prompt=`Turn this drawing into ONE specific computer action. Make your best guess, even for messy drawings. Choose a playful, surprising action connected to what is actually drawn. Open a relevant real website, launch an app or use a shortcut. No canned jokes, generic meme searches, motivational searches, grass tutorials or cat-image defaults. No roast text. Money or a dollar sign opens https://crypto.com/us/price/dogecoin. Return only {"type":"...","value":"..."}. Types: open_app (${Object.keys(APPS).join(',')}), open_url (a complete https URL), keys (close_tab,new_tab,undo,save,show_desktop,mute). Keep the value short. User hint: ${String(hint).slice(0,300)}`;
     for(let attempt=0;attempt<2;attempt++){
       let response;
       if(provider==='local'){
@@ -62,7 +66,7 @@ async function interpret({ image, hint = '', key, model, provider = 'local', sig
     try {
       response = await fetcher('http://127.0.0.1:11434/api/chat', {
         method:'POST', signal:requestSignal, headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({model:model || LOCAL_MODEL,stream:false,format:PLAN_SCHEMA,keep_alive:'1h',options:{temperature:0,num_predict:256,num_ctx:2048},messages:[{role:'system',content:INSTRUCTIONS},{role:'user',content:inputText,images:[image.slice('data:image/png;base64,'.length)]}]})
+        body:JSON.stringify({model:model || LOCAL_MODEL,stream:false,format:PLAN_SCHEMA,keep_alive:'1h',options:{temperature:0,num_predict:256,num_ctx:4096},messages:[{role:'system',content:INSTRUCTIONS},{role:'user',content:inputText,images:[image.slice('data:image/png;base64,'.length)]}]})
       });
     } catch(e) {
       if(signal?.aborted) throw Error('Drawing recognition stopped.');
@@ -74,6 +78,7 @@ async function interpret({ image, hint = '', key, model, provider = 'local', sig
       throw Error(`Local AI failed (${response.status}). Check that your model supports images and has enough memory.`);
     }
     const data = await response.json();
+    if(signal?.aborted)throw Error('Drawing recognition stopped.');
     if(data.error) throw Error('Local AI failed to generate a plan. Check Ollama and model memory requirements.');
     if(data.done === false || data.done_reason === 'length') throw Error('Local AI could not finish its plan. Try a simpler drawing.');
     return parsePlan(data.message?.content);
@@ -85,6 +90,7 @@ async function interpret({ image, hint = '', key, model, provider = 'local', sig
   });
   if (!response.ok) throw Error(`OpenAI request failed (${response.status}). Check your key, model, and API credits.`);
   const data = await response.json();
+  if(signal?.aborted)throw Error('Drawing recognition stopped.');
   const text = (data.output || []).flatMap(o => o.content || []).filter(c => c.type === 'output_text').map(c => c.text).join('');
   return parsePlan(text);
 }
@@ -98,7 +104,7 @@ function parseCreativeAction(text){
   }
   const plan=validate({title:typeof action?.type==='string'?action.type.replace(/_/g,' '):'Action',explanation:typeof action?.value==='string'?action.value:'',confidence:1,comedy:true,quick:true,actions:[action]});
   if(!['open_app','open_url','keys'].includes(action.type))throw Error('The model returned an unsupported drawing action.');
-  if(action.type==='open_url'&&action.value==='https://crypto.com/dogecoin')plan.topic='money';
+  if(action.type==='open_url'&&action.value==='https://crypto.com/us/price/dogecoin')plan.topic='money';
   return plan;
 }
 function parsePlan(text) {

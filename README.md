@@ -1,12 +1,12 @@
 # ✳ Doodle Do
 
-**Bad drawings. Worse decisions.** A Windows desktop app that turns sketches into questionable computer actions. Creative mode lets the AI choose an action directly from each drawing. Money opens crypto.com/dogecoin as explicitly configured. Turn Creative mode off in Settings for literal computer control.
+**Bad drawings. Worse decisions.** A Windows desktop app that turns sketches into questionable computer actions. Creative mode lets the AI choose an action directly from each drawing. Money opens crypto.com/us/price/dogecoin as explicitly configured. Turn Creative mode off in Settings for literal computer control.
 
 ## Draw over your screen
 
 With the app running, press **Ctrl+Alt+D**. The monitor under your cursor dims like Snipping Tool. Draw directly over the visible desktop, then press **Enter** to run, or **Esc** to cancel. Undo with Ctrl+Z. The **Screen** button opens the same overlay if another app owns the hotkey.
 
-Draw a small X over a Chrome or Edge tab, using one or two strokes. The app targets the tab at the intersection and closes it through Windows accessibility controls, or selects that tab and sends Ctrl+W. Display scaling is converted to physical screen coordinates.
+Draw a small X over a Microsoft Edge tab, using one or two strokes. Only Microsoft Edge is eligible for tab closing. Doodle Do cannot target its own window. The app targets the tab at the intersection and closes it through Windows accessibility controls, or selects that tab and sends Ctrl+W. Display scaling is converted to physical screen coordinates.
 
 Only the drawn ink goes to the model, not the desktop beneath it. Other screen drawings use the same comedy/literal mode and permissions as the main app. The overlay hides before execution and restores focus to the window you were drawing over.
 
