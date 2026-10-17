@@ -44,6 +44,7 @@ el('overlayDone').onclick = async () => {
   catch (e) { el('overlayStatus').textContent = e.message; sending = false; render(); }
 };
 window.doodle.overlayInfo().then(frame => {
+  el('overlayProvider').textContent = frame.providerName;
   el('desktopImage').src = frame.image;
   pad.width = frame.width; pad.height = frame.height;
   render();

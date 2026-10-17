@@ -1,0 +1,15 @@
+(async()=>{
+  const wait = async predicate => { const end=Date.now()+70000; while(!predicate()){if(Date.now()>end)throw Error('Live check timed out');await new Promise(r=>setTimeout(r,50));} };
+  await wait(()=>document.getElementById('connection').textContent.includes('Gemini'));
+  // Generate an app-owned demo drawing, then use actual vision instead of the preset demo plan.
+  drawDemo('compass');
+  document.getElementById('interpret').click();
+  await wait(()=>!document.getElementById('stop').disabled);
+  await wait(()=>document.getElementById('stop').disabled);
+  if(document.getElementById('status').classList.contains('error'))throw Error(document.getElementById('status').textContent);
+  if(document.getElementById('execute').disabled)throw Error('Gemini returned an unclear or empty plan.');
+  const recognized=document.getElementById('planTitle').textContent;
+  document.getElementById('execute').click();
+  await wait(()=>document.getElementById('planBadge').textContent==='REHEARSAL COMPLETE');
+  return {provider:'gemini',liveApi:true,title:recognized,rehearsal:true,desktopMutated:false};
+})()

@@ -7,9 +7,10 @@
   "scripts": {
     "start": "electron .",
     "test": "node --test",
-    "check": "node --check src/main.js && node --check src/agent.js && node --check src/desktop.js && node --check src/preload.js && node --check src/renderer.js && node --check src/overlay.js",
+    "check": "node --check src/main.js && node --check src/agent.js && node --check src/desktop.js && node --check src/preload.js && node --check src/renderer.js && node --check src/overlay.js && node --check src/settings.js",
     "dist": "electron-builder --win portable",
-    "smoke": "node scripts/smoke.js"
+    "smoke": "node scripts/smoke.js",
+    "smoke:gemini": "node scripts/smoke.js gemini"
   },
   "devDependencies": {
     "electron": "^44.8.0",

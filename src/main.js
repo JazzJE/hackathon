@@ -1,11 +1,12 @@
 const { app, BrowserWindow, ipcMain, globalShortcut, screen, desktopCapturer, systemPreferences, shell } = require('electron');
 const path = require('node:path');
-const { interpret, validate, commandFor, runCommand, terminate, arrangeCommand, supportedApps } = require('./agent');
+const { interpret, validate, commandFor, runCommand, terminate, arrangeCommand, supportedApps, PROVIDERS } = require('./agent');
 let win, pending = null, active = null, stopped = false, busy = false, controller = null;
 const {desktopInventory, trashDesktopItems, trashNames, clickCommand, layoutFrom, layoutRect} = require('./desktop');
 let overlay = null, capturedFrame = null, pendingFrame = null, openingOverlay = false, overlayHotkeyAvailable = false, overlaySubmitted = false;
 const platform = process.platform;
-const settings = {key:process.env.OPENAI_API_KEY || '', model:'gpt-4.1-mini', shell:false, install:false};
+const {createSettings,updateSettings,publicSettings} = require('./settings');
+const settings = createSettings(process.env,platform);
 let shortcutAvailable = false;
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 app.whenReady().then(() => {
@@ -18,6 +19,12 @@ app.whenReady().then(() => {
     else openOverlay().catch(e => { win.restore(); win.show(); win.webContents.send('overlay-error',e.message); });
   });
   shortcutAvailable = globalShortcut.register('CommandOrControl+Alt+Backspace', stop);
+  if (process.env.DOODLE_LIVE_CHECK === '1') win.webContents.once('did-finish-load', async () => {
+    try {
+      const result = await win.webContents.executeJavaScript(require('node:fs').readFileSync(path.join(__dirname,'../test/fixtures/live-gemini.txt'),'utf8'));
+      console.log('LIVE_GEMINI',JSON.stringify(result));
+    } catch(e) { console.error('LIVE_GEMINI_FAILED',e.message); }
+  });
   if (process.env.DOODLE_SMOKE === '1') win.webContents.once('did-finish-load', async () => {
     try {
       const result = await win.webContents.executeJavaScript(require('node:fs').readFileSync(path.join(__dirname,'../test/fixtures/smoke.txt'),'utf8'));
@@ -28,18 +35,20 @@ app.whenReady().then(() => {
       const overlayResult = await overlay.webContents.executeJavaScript(require('node:fs').readFileSync(path.join(__dirname,'../test/fixtures/overlay-smoke.txt'),'utf8'));
       console.log('OVERLAY_SMOKE',JSON.stringify(overlayResult));
       if (process.env.DOODLE_OVERLAY_SCREENSHOT) require('node:fs').writeFileSync(process.env.DOODLE_OVERLAY_SCREENSHOT,(await overlay.webContents.capturePage()).toPNG());
-      const originalFetch = global.fetch, originalKey = settings.key;
+      const mockProvider = process.env.DOODLE_SMOKE_PROVIDER === 'gemini' ? 'gemini' : 'openai';
+      const originalFetch = global.fetch, originalProviderKey = settings.providers[mockProvider].key, originalProvider = settings.provider;
       try {
-        settings.key = 'smoke-placeholder';
+        settings.provider = mockProvider; settings.key = 'smoke-placeholder';
         global.fetch = async (url, options) => {
           const body = JSON.parse(options.body);
-          if (url !== 'https://api.openai.com/v1/responses' || body.input[0].content.length !== 3) throw Error('Overlay must send scene + drawing together.');
-          return {ok:true,json:async()=>({output:[{content:[{type:'output_text',text:JSON.stringify({title:'Split screen, drawn by hand',explanation:'Chrome on the left. Spotify on the right. A fixture plan for the automated rehearsal.',confidence:.95,actions:[{type:'arrange_app',value:'{"app":"chrome","x":0,"y":0,"width":500,"height":1000}'},{type:'arrange_app',value:'{"app":"spotify","x":500,"y":0,"width":500,"height":1000}'}]})}]}]})};
+          if (mockProvider === 'gemini' ? !url.startsWith('https://generativelanguage.googleapis.com/') || body.contents[0].parts.length !== 3 : url !== 'https://api.openai.com/v1/responses' || body.input[0].content.length !== 3) throw Error('Overlay must send scene + drawing together.');
+          const text = JSON.stringify({title:'Split screen, drawn by hand',explanation:'Chrome on the left. Spotify on the right. A fixture plan for the automated rehearsal.',confidence:.95,actions:[{type:'arrange_app',value:'{"app":"chrome","x":0,"y":0,"width":500,"height":1000}'},{type:'arrange_app',value:'{"app":"spotify","x":500,"y":0,"width":500,"height":1000}'}]});
+          return {ok:true,json:async()=>mockProvider === 'gemini' ? {candidates:[{finishReason:'STOP',content:{parts:[{text}]}}]} : {output:[{content:[{type:'output_text',text}]}]}};
         };
         await overlay.webContents.executeJavaScript("document.getElementById('overlayDone').click()");
         const completed = await win.webContents.executeJavaScript(require('node:fs').readFileSync(path.join(__dirname,'../test/fixtures/complete-smoke.txt'),'utf8'));
-        console.log('COMPLETE_SMOKE',JSON.stringify(completed));
-      } finally { global.fetch = originalFetch; settings.key = originalKey; }
+        console.log('COMPLETE_SMOKE',JSON.stringify({provider:mockProvider,...completed}));
+      } finally { global.fetch = originalFetch; settings.providers[mockProvider].key = originalProviderKey; settings.provider = originalProvider; }
       await win.webContents.executeJavaScript('document.activeElement.blur(); window.scrollTo(0,0)');
       await pause(100);
       if (process.env.DOODLE_SCREENSHOT) require('node:fs').writeFileSync(process.env.DOODLE_SCREENSHOT,(await win.webContents.capturePage()).toPNG());
@@ -49,15 +58,15 @@ app.whenReady().then(() => {
 });
 function stop() { if (overlay) cancelOverlay(); stopped = true; pending = null; controller?.abort(); terminate(active); }
 function available() { if (busy || openingOverlay || overlay) throw Error('Finish or stop the current request first.'); }
-function info() { return {platform,hasKey:!!settings.key,model:settings.model,shell:settings.shell,install:settings.install,shortcutAvailable,overlayHotkeyAvailable}; }
+function info() { return {platform,...publicSettings(settings),shortcutAvailable,overlayHotkeyAvailable}; }
 ipcMain.handle('info', info);
+ipcMain.handle('key-setup',(_,provider) => {
+  if (!Object.hasOwn(PROVIDERS,provider)) throw Error('Unknown provider.');
+  return shell.openExternal(PROVIDERS[provider].keyUrl);
+});
 ipcMain.handle('settings', (_, args = {}) => {
   available();
-  if (args.forgetKey) settings.key = '';
-  else if (typeof args.key === 'string' && args.key.trim()) settings.key = args.key.trim();
-  if (typeof args.model === 'string' && args.model.trim()) settings.model = args.model.trim().slice(0,100);
-  settings.shell = platform === 'win32' && args.shell === true;
-  settings.install = platform === 'win32' && args.install === true;
+  updateSettings(settings,args,platform);
   pending = null; pendingFrame = null;
   return info();
 });
@@ -68,7 +77,7 @@ ipcMain.handle('interpret', async (_, args = {}) => {
   if (args.overlay === true && !frame) throw Error('Open the desktop canvas and draw again.');
   busy = true; stopped = false; pending = null; controller = new AbortController();
   try {
-    const plan = await interpret({image:args.image,hint:args.hint,...settings,allowShell:!frame && settings.shell,platform,signal:controller.signal,desktop:frame ? {image:frame.image,names:[...frame.inventory.keys()]} : undefined});
+    const plan = await interpret({image:args.image,hint:args.hint,key:settings.key,model:settings.model,provider:settings.provider,allowShell:!frame && settings.shell,platform,signal:controller.signal,desktop:frame ? {image:frame.image,names:[...frame.inventory.keys()]} : undefined});
     if (stopped) throw Error('Interpretation cancelled. Your drawing is still here.');
     pending = plan; pendingFrame = frame;
     return plan;
@@ -189,7 +198,7 @@ ipcMain.handle('open-overlay',openOverlay);
 ipcMain.handle('overlay-info',event => {
   requireOverlay(event);
   if (!capturedFrame) throw Error('Capture expired.');
-  return {image:capturedFrame.image,width:capturedFrame.width,height:capturedFrame.height};
+  return {image:capturedFrame.image,width:capturedFrame.width,height:capturedFrame.height,providerName:PROVIDERS[settings.provider].name};
 });
 ipcMain.handle('cancel-overlay',event => { requireOverlay(event); cancelOverlay(); });
 ipcMain.handle('complete-overlay',(event,args = {}) => {

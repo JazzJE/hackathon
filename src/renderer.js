@@ -226,27 +226,47 @@ $('dismissChallenge').onclick = endChallenge;
 function applyInfo(state) {
   info = state;
   $('overlayHotkey').textContent = state.overlayHotkeyAvailable ? `${state.platform === 'darwin' ? '⌘' : 'Ctrl'} Shift D` : 'Hotkey unavailable';
-  $('connection').textContent = state.hasKey ? 'AI key ready' : 'Demo ready · add a key for AI';
+  $('provider').value = state.provider;
+  $('connection').textContent = state.hasKey ? `${state.provider === 'gemini' ? 'Gemini' : 'OpenAI'} key ready` : 'Demo ready · add a key for AI';
   $('connection').classList.toggle('connected',state.hasKey);
   $('model').value = state.model; $('shell').checked = state.shell; $('install').checked = state.install;
-  $('keyState').textContent = state.hasKey ? 'Key set for this session' : 'No key set'; $('forgetKey').hidden = !state.hasKey;
+  refreshProvider();
   $('windowsOptions').hidden = state.platform !== 'win32'; $('macHelp').hidden = state.platform !== 'darwin';
   $('platformLabel').textContent = `${state.platform === 'darwin' ? 'MACOS' : state.platform === 'win32' ? 'WINDOWS' : 'REHEARSAL'} EDITION / 02`;
   $('noteLabel').textContent = `A little page → ${appName('notepad')}`;
   $('compassLabel').textContent = state.platform === 'darwin' ? 'A compass → Safari' : 'A compass → your browser';
   $('stopShortcut').textContent = state.shortcutAvailable ? `· ${state.platform === 'darwin' ? '⌘ Option' : 'Ctrl Alt'} Backspace` : '· global shortcut unavailable';
 }
-$('settingsButton').onclick = () => { $('settingsStatus').textContent = ''; $('settings').showModal(); };
+function refreshProvider() {
+  const gemini = $('provider').value === 'gemini';
+  const current = info?.providers?.[$('provider').value];
+  $('keyLabel').textContent = gemini ? 'Gemini API key' : 'OpenAI API key';
+  $('key').placeholder = gemini ? 'AIza…' : 'sk-…';
+  $('keyState').textContent = current?.hasKey ? 'Key set for this session' : 'No key set';
+  $('forgetKey').hidden = !current?.hasKey;
+  $('getApiKey').textContent = gemini ? 'Get a free-tier Gemini key ↗' : 'Get an OpenAI API key ↗';
+  $('providerHelp').textContent = gemini ? 'Choose a Free Tier project in AI Studio. Gemini Pro subscriptions have separate API limits. Free-tier submissions may be used to improve Google products; avoid private desktop content. This app never enables billing or switches to a paid provider automatically.' : 'OpenAI API usage is billed separately from ChatGPT subscriptions. Only this selected provider receives the drawing.';
+}
+$('provider').onchange = () => {
+  $('key').value = '';
+  $('model').value = info.providers[$('provider').value].model;
+  refreshProvider();
+};
+$('getApiKey').onclick = async () => {
+  try { await window.doodle.openKeySetup($('provider').value); }
+  catch (e) { $('settingsStatus').textContent = e.message; }
+};
+$('settingsButton').onclick = () => { applyInfo(info); $('key').value = ''; $('settingsStatus').textContent = ''; $('settings').showModal(); };
 $('closeSettings').onclick = () => $('settings').close();
 $('settingsForm').onsubmit = async event => {
   event.preventDefault();
   try {
-    applyInfo(await window.doodle.settings({key:$('key').value,model:$('model').value,shell:$('shell').checked,install:$('install').checked}));
+    applyInfo(await window.doodle.settings({provider:$('provider').value,key:$('key').value,model:$('model').value,shell:$('shell').checked,install:$('install').checked}));
     $('key').value = ''; invalidate(); $('settings').close(); status(info.hasKey ? 'All set. Draw something only you understand.' : 'Demo mode is ready. Add a key anytime for your own drawings.');
   } catch(e) { $('settingsStatus').textContent = e.message; }
 };
 $('forgetKey').onclick = async () => {
-  try { applyInfo(await window.doodle.settings({forgetKey:true,model:$('model').value,shell:$('shell').checked,install:$('install').checked})); $('key').value = ''; invalidate(); }
+  try { applyInfo(await window.doodle.settings({provider:$('provider').value,forgetKey:true,model:$('model').value,shell:$('shell').checked,install:$('install').checked})); $('key').value = ''; invalidate(); }
   catch(e) { $('settingsStatus').textContent = e.message; }
 };
 $('openDesktop').onclick = async () => {

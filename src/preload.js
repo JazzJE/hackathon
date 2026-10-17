@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld('doodle', {
   onOverlayDrawing: callback => ipcRenderer.on('overlay-drawing',(_,args) => callback(args)),
   onOverlayError: callback => ipcRenderer.on('overlay-error',(_,message) => callback(message)),
   onOverlayCancelled: callback => ipcRenderer.on('overlay-cancelled',() => callback()),
+  openKeySetup: provider => ipcRenderer.invoke('key-setup',provider),
   info: () => ipcRenderer.invoke('info'),
   settings: args => ipcRenderer.invoke('settings', args),
   invalidate: () => ipcRenderer.invoke('invalidate'),

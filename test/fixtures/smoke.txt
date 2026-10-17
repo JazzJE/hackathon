@@ -35,6 +35,13 @@
   c.setPointerCapture=capture;
   document.getElementById('settingsButton').click();
   assert(document.getElementById('settings').open,'Settings did not open');
+  const originalProvider=document.getElementById('provider').value;
+  document.getElementById('key').value='a-typed-session-key';
+  document.getElementById('provider').value=originalProvider==='gemini'?'openai':'gemini';
+  document.getElementById('provider').dispatchEvent(new Event('change'));
+  assert(document.getElementById('key').value==='','Switching providers must clear the typed key');
+  assert(document.getElementById('model').value===(originalProvider==='gemini'?'gpt-4.1-mini':'gemini-3.8-flash'),'Switching providers must select its own model');
+  document.getElementById('provider').value=originalProvider; document.getElementById('provider').dispatchEvent(new Event('change'));
   document.getElementById('closeSettings').click();
   document.getElementById('newChallenge').click();
   assert(!document.getElementById('challenge').hidden,'Challenge should be visible');

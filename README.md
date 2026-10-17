@@ -14,7 +14,13 @@ npm ci
 npm start
 ```
 
-Open **Settings** and add an OpenAI API key, or set `OPENAI_API_KEY` before launching. The default image-capable model is `gpt-4.1-mini`; you can change it in Settings. API requests are billed to your account. Keys stay in the main process for this session and are never written to disk. **Forget session key** removes the current key, including one originally provided through the environment.
+Open **Settings**, choose **Google Gemini**, and paste a key from [Google AI Studio](https://aistudio.google.com/apikey). New sessions default to `gemini-3.8-flash`, which has a [free tier](https://ai.google.dev/gemini-api/docs/pricing#gemini-3.8-flash), subject to account eligibility and quotas. Keep the project on Free Tier; the app never enables billing or falls back to a paid provider. A Gemini Pro subscription has separate API access and limits.
+
+The Settings **Get a free-tier Gemini key** button opens the official API-key page. Create or select a project, create a key, copy it, paste it in Settings, and save. Account sign-in, terms acceptance, and key creation happen on Google's site; no account credentials are shared with this app. Do not post API keys in chats or commit them to git.
+
+You can also set `GEMINI_API_KEY` (or `GOOGLE_API_KEY`) before launching. **OpenAI** remains available in the provider selector with `gpt-4.1-mini`; `OPENAI_API_KEY` is still supported. If only an OpenAI environment key is present, the app preserves that provider. `DOODLE_PROVIDER=gemini` or `openai` explicitly selects one. Each provider keeps its own model and key for the session; switching cannot send one provider's key to the other.
+
+Keys stay in the main process for this session and are never written to disk. Blank key fields preserve the selected provider's saved session key. **Forget session key** clears only that provider's key, including one originally loaded from the environment. OpenAI API usage is paid separately from ChatGPT subscriptions.
 
 Without a key, four labeled preset demos let you try drawing tools, plan previews, rehearsal, and real built-in actions. These are not AI recognition.
 
@@ -27,7 +33,7 @@ Without a key, four labeled preset demos let you try drawing tools, plan preview
 5. Review the interpreted actions and **Review marked desktop**. The preview combines the screenshot, your drawing, and green click targets or window regions.
 6. **Rehearsal mode** is on by default: play through the steps without touching the desktop. Turn it off and run the same reviewed plan for real.
 
-Desktop mode sends the screenshot of the selected display, the drawing, and up to 300 non-hidden desktop item names to OpenAI **only when you press Done**. It does not stream the screen. Captures stay in session memory and are not added to the sketch gallery or saved to disk. The API request uses `store: false`.
+Desktop mode sends the screenshot of the selected display, the drawing, and up to 300 non-hidden desktop item names to the selected AI provider **only when you press Done**. It does not stream the screen. Captures stay in session memory and are not added to the sketch gallery or saved to disk. OpenAI requests use `store: false`. Google free-tier submissions may be used to improve Google products; avoid capturing private desktop content when using that tier.
 
 ### Three competition tricks
 
@@ -65,10 +71,11 @@ Windows-only, opt-in settings retain the original prototype’s **Install missin
 npm test
 npm run check
 npm run smoke
+npm run smoke:gemini
 npm run dist
 ```
 
-`npm run smoke` launches Electron and checks the UI, rehearsal, cancellation, stale-plan rejection, drawing/erasing, undo/redo, gallery, challenges, and desktop overlay. It uses a screenshot of the app itself as an overlay fixture: **no actual desktop capture, API call, file move, click, or window resize**. Unit tests exercise normalized target coordinates, display offsets, app/window bounds, structured API output, Trash preflight, and path rejection with a mocked Trash API.
+`npm run smoke` (OpenAI mock) and `npm run smoke:gemini` (Gemini mock) launch Electron and checks the UI, rehearsal, cancellation, stale-plan rejection, drawing/erasing, undo/redo, gallery, challenges, and desktop overlay. It uses a screenshot of the app itself as an overlay fixture: **no actual desktop capture, API call, file move, click, or window resize**. Unit tests exercise normalized target coordinates, display offsets, app/window bounds, structured API output, Trash preflight, and path rejection with a mocked Trash API.
 
 `npm run dist` builds an unsigned portable Windows executable under `dist/`. Run the source directly on macOS; a signed macOS installer is not included. Automated checks do not verify OS-specific automation against live apps or real model accuracy. Rehearse a few drawings on the competition computer before presenting.
 
@@ -76,4 +83,4 @@ Electron uses a sandboxed preload, context isolation, and a narrow IPC bridge. T
 
 Key files: `src/agent.js` (vision and commands), `src/desktop.js` (coordinates, layouts and Trash checks), `src/main.js` (lifecycle, capture, IPC and execution), `src/overlay.*` (desktop drawing), `src/renderer.js` (sketchpad and plan review).
 
-Vision plans follow the official [OpenAI Structured Outputs documentation](https://developers.openai.com/api/docs/guides/structured-outputs?api-mode=responses). Capture uses Electron’s [desktopCapturer](https://www.electronjs.org/docs/latest/api/desktop-capturer).
+Gemini uses inline image inputs and JSON-schema output as documented in the official [Gemini image guide](https://ai.google.dev/gemini-api/docs/image-understanding) and [structured-output guide](https://ai.google.dev/gemini-api/docs/generate-content/structured-output). OpenAI vision plans follow the official [OpenAI Structured Outputs documentation](https://developers.openai.com/api/docs/guides/structured-outputs?api-mode=responses). Capture uses Electron’s [desktopCapturer](https://www.electronjs.org/docs/latest/api/desktop-capturer).
