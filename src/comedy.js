@@ -1,6 +1,6 @@
 const TOPICS=['money','love','school','work','gym','coffee','food','cat','music','car','computer','chaos'];
 const JOKES={
-  money:{emoji:'💸',title:'Your tuition is now a dog with a market cap.',line:'Diversifying from broke into volatile.',url:'https://coinmarketcap.com/view/memes/'},
+  money:{emoji:'💸',title:'Your tuition has entered its crypto era.',line:'Diversifying from broke into volatile.',url:'https://crypto.com/'},
   love:{emoji:'💔',title:'Your crush is typing…',line:'Never mind. That was the group chat.',query:'how to recover from being left on read'},
   school:{emoji:'🎓',title:'Academic weapon. On safety.',line:'Your degree in procrastination is ready.',query:'how to learn an entire semester in 20 minutes'},
   work:{emoji:'💼',title:'Rejected before you applied.',line:'Entry level. Requires 12 years of being 22.',query:'jobs no experience no skills high salary'},

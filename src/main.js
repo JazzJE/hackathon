@@ -40,7 +40,7 @@ app.whenReady().then(() => {
           const second=await window.doodle.interpret(args);
           return {topic:first.topic,url:first.actions[0]?.value,firstMs:Math.round(first.latencyMs),repeatMs:Math.round(second.latencyMs),repeatSource:second.source};
         })()`);
-        if(result.topic!=='money'||result.url!=='https://coinmarketcap.com/view/memes/'||result.repeatSource!=='cache')throw Error('Money interpretation failed: '+JSON.stringify(result));
+        if(result.topic!=='money'||result.url!=='https://crypto.com/'||result.repeatSource!=='cache')throw Error('Money interpretation failed: '+JSON.stringify(result));
         console.log('COMEDY_SMOKE',JSON.stringify(result));
         const reaction=showReaction('money');await new Promise(r=>reaction.webContents.once('did-finish-load',r));await new Promise(r=>setTimeout(r,150));
         if(process.env.DOODLE_SCREENSHOT)require('node:fs').writeFileSync(process.env.DOODLE_SCREENSHOT,(await reaction.webContents.capturePage()).toPNG());

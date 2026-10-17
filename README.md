@@ -1,6 +1,6 @@
 # ✳ Doodle Do
 
-**Bad drawings. Worse decisions.** A Windows desktop app that turns sketches into questionable computer actions. Comedy mode is the default: money opens the real meme-coin market page, a heart searches for recovery from being left on read, and coffee prescribes a ten-hour nap. Every topic gets a short roast on screen. Turn Comedy mode off in Settings for literal computer control.
+**Bad drawings. Worse decisions.** A Windows desktop app that turns sketches into questionable computer actions. Comedy mode is the default: money opens Crypto.com, a heart searches for recovery from being left on read, and coffee prescribes a ten-hour nap. Every topic gets a short roast on screen. Turn Comedy mode off in Settings for literal computer control.
 
 ## Draw over your screen
 
@@ -42,7 +42,7 @@ The app starts an installed Ollama server if needed. In **Settings → Check loc
 
 Select **OpenAI** in Settings, enter an API key, and choose an image-capable Responses API model available to your account. Default: `gpt-4.1-mini`. You can also set `OPENAI_API_KEY` before starting. The key is held in session memory, never saved by this app. Cloud mode sends your drawing and hint to OpenAI and uses separate API billing. Local mode never sends your drawing or key to OpenAI.
 
-The example cards load **preset demo plans**, not AI recognition. Click **Run this plan** for a real computer action, or **Make it happen** to interpret and run the drawing. The dollar-sign example can use the instant gesture path. Comedy actions open real Google/YouTube searches or the meme-coin market page; nothing makes purchases, trades, or sends messages.
+The example cards load **preset demo plans**, not AI recognition. Click **Run this plan** for a real computer action, or **Make it happen** to interpret and run the drawing. The dollar-sign example can use the instant gesture path. Comedy actions open real Google/YouTube searches or Crypto.com; nothing makes purchases, trades, or sends messages.
 
 ## The loop
 

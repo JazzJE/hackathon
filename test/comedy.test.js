@@ -2,9 +2,9 @@ const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const {comedyPlan,topicFromHint,TOPICS}=require('../src/comedy');
 const {validate,interpret}=require('../src/agent');
-test('money opens the real meme-coin market page',()=>{
-  const p=comedyPlan('money');assert.equal(p.actions[0].value,'https://coinmarketcap.com/view/memes/');
-  assert.match(p.title,/tuition.*dog/);assert.equal(p.comedy,true);validate(p);
+test('money opens Crypto.com directly',()=>{
+  const p=comedyPlan('money');assert.equal(p.actions[0].value,'https://crypto.com/');
+  assert.match(p.title,/tuition.*crypto/);assert.equal(p.comedy,true);validate(p);
 });
 test('all comedy topics produce valid real-web actions',()=>{
   for(const topic of TOPICS){const p=validate(comedyPlan(topic));assert.equal(p.actions[0].type,'open_url');assert.match(p.actions[0].value,/^https:\/\//);}
